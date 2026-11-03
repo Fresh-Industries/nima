@@ -83,6 +83,7 @@ export function createNewThreadHandler(router: AnyRouter) {
       envMode?: DraftThreadEnvMode;
       startFromOrigin?: boolean;
       replace?: boolean;
+      reuseEmptyDraft?: boolean;
       /** Composer text for the draft, set before it shows. A draft with user text keeps it. */
       prompt?: string;
     },
@@ -239,7 +240,7 @@ export function createNewThreadHandler(router: AnyRouter) {
         ? getDraftThread(currentRouteTarget.threadRef)
         : getDraftSession(currentRouteTarget.draftId)
       : null;
-    if (emptyStoredDraftThread) {
+    if (emptyStoredDraftThread && options?.reuseEmptyDraft !== false) {
       return (async () => {
         const isDraftAlreadyOpen =
           currentRouteTarget?.kind === "draft" &&
@@ -334,6 +335,7 @@ export function createNewThreadHandler(router: AnyRouter) {
     }
 
     if (
+      options?.reuseEmptyDraft !== false &&
       latestActiveDraftThread &&
       currentRouteTarget?.kind === "draft" &&
       latestActiveDraftThread.logicalProjectKey === logicalProjectKey &&
@@ -373,6 +375,7 @@ export function createNewThreadHandler(router: AnyRouter) {
       // Reuse drafts registered while awaiting so their pending navigation cannot lose them.
       const racedDraft = getDraftSessionByLogicalProjectKey(logicalProjectKey);
       if (
+        options?.reuseEmptyDraft !== false &&
         racedDraft &&
         racedDraft.draftId !== storedDraftThread?.draftId &&
         readThreadShell(scopeThreadRef(racedDraft.environmentId, racedDraft.threadId)) === null

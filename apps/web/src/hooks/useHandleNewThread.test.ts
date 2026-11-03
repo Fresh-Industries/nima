@@ -314,6 +314,23 @@ describe.each([
 });
 
 describe("useNewThreadHandler", () => {
+  it("keeps a named session separate from an existing empty draft", async () => {
+    testState.reset({
+      draftId: "draft-today",
+      environmentId: "environment-ssh",
+      promotedTo: null,
+      threadId: "thread-today",
+    });
+    testState.openEmptyDraft("draft-today");
+    const opened = await useNewThreadHandler()(
+      { environmentId: "environment-ssh", projectId: "project-remote" } as never,
+      { reuseEmptyDraft: false, prompt: "Focus objective" },
+    );
+    expect(opened?.draftId).not.toBe("draft-today");
+    expect(opened?.threadId).not.toBe("thread-today");
+    expect(testState.draftStore.setPrompt).toHaveBeenCalledWith(opened?.draftId, "Focus objective");
+  });
+
   it("keeps the text of a draft that gained some while it waited", async () => {
     testState.reset(null);
     const raced = {
