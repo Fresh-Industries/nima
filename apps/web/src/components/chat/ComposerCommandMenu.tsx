@@ -8,6 +8,7 @@ import {
   type EnvironmentId,
   type EnvironmentMachineKind,
   type ProjectEntry,
+  type ScopedProjectRef,
   type ProviderDriverKind,
   type PullRequestContextMetadata,
   type ScopedThreadRef,
@@ -35,6 +36,7 @@ import { ComposerBanner } from "./ComposerBanner";
 import { resolvePullRequestState } from "../pullRequest/pullRequestPresentation";
 
 export type ComposerCommandItem =
+  | { id: string; type: "project"; project: ScopedProjectRef; label: string; description: string }
   | {
       id: string;
       type: "path";
@@ -213,6 +215,9 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       ) : null}
       {props.item.type === "thread" ? (
         <MessagesSquareIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
+      ) : null}
+      {props.item.type === "project" ? (
+        <FolderIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
       ) : null}
       {props.item.type === "environment" ? (
         <EnvironmentMachineIcon

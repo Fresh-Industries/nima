@@ -1,3 +1,13 @@
+import * as ProjectTeams from "./bots/ProjectTeams.ts";
+import * as WorkSessions from "./workspace/WorkSessions.ts";
+import * as BotStore from "./bots/BotStore.ts";
+import * as PersonalAgent from "./personalAgent/PersonalAgent.ts";
+import * as AssistantConversation from "./personalAgent/AssistantConversation.ts";
+import * as WorkspacePages from "./workspace/WorkspacePages.ts";
+import * as Studio from "./studio/Studio.ts";
+import * as WorkspaceReview from "./workspace/WorkspaceReview.ts";
+import * as WorkspaceGoals from "./workspace/WorkspaceGoals.ts";
+import * as WorkspaceNotes from "./workspace/WorkspaceNotes.ts";
 import * as SecretResolver from "@t3tools/secret-provider-core/server/SecretResolver";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -728,6 +738,16 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({}),
   Layer.mock(WorkspaceEntries.WorkspaceEntries)({}),
   Layer.mock(WorkspaceFileSystem.WorkspaceFileSystem)({}),
+  Layer.mock(WorkspaceReview.WorkspaceReview)({}),
+  Layer.mock(WorkSessions.WorkSessions)({}),
+  Layer.mock(WorkspaceGoals.WorkspaceGoals)({}),
+  Layer.mock(WorkspacePages.WorkspacePages)({}),
+  Layer.mock(Studio.Studio)({}),
+  Layer.mock(WorkspaceNotes.WorkspaceNotes)({}),
+  Layer.mock(PersonalAgent.PersonalAgent)({}),
+  Layer.mock(ProjectTeams.ProjectTeams)({}),
+  Layer.mock(BotStore.BotStore)({}),
+  Layer.mock(AssistantConversation.AssistantConversation)({}),
   Layer.mock(WorktreeSetupTracker.WorktreeSetupTracker)({}),
 );
 

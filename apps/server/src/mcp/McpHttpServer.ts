@@ -1,3 +1,16 @@
+import { BotsToolkit } from "./toolkits/bots/tools.ts";
+import * as BotToolAccess from "../bots/BotToolAccess.ts";
+import * as BotsHandlers from "./toolkits/bots/handlers.ts";
+import { MemoryToolkit } from "./toolkits/memory/tools.ts";
+import * as MemoryHandlers from "./toolkits/memory/handlers.ts";
+import { PagesToolkit } from "./toolkits/pages/tools.ts";
+import { StudioToolkit } from "./toolkits/studio/tools.ts";
+import * as StudioHandlers from "./toolkits/studio/handlers.ts";
+import * as PagesHandlers from "./toolkits/pages/handlers.ts";
+import { GoalsToolkit } from "./toolkits/goals/tools.ts";
+import * as GoalsHandlers from "./toolkits/goals/handlers.ts";
+import { NotesToolkit } from "./toolkits/notes/tools.ts";
+import * as NotesHandlers from "./toolkits/notes/handlers.ts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -1018,6 +1031,49 @@ const withToolAnalytics =
     return yield* registration.pipe(Effect.provideService(McpServer.McpServer, recordingServer));
   });
 
+/** Production installs the guard for every registration, including image tools.
+ * Low-level toolkit fixtures can register without the Bara identity service. */
+const withBotToolAccess = Effect.fn("McpHttpServer.withBotToolAccess")(function* <A, E, R>(
+  registration: Effect.Effect<A, E, R>,
+) {
+  const guard = yield* Effect.serviceOption(BotToolAccess.BotToolAccess);
+  if (Option.isNone(guard)) return yield* registration;
+  const server = yield* McpServer.McpServer;
+  const secured = McpServer.McpServer.of({
+    ...server,
+    addTool: Effect.fn("McpServer.addTool")(function (options) {
+      return server.addTool({
+        ...options,
+        handle: Effect.fn("McpHttpServer.authorizeBotTool")(function* (payload) {
+          const scope = yield* Effect.serviceOption(McpInvocationContext.McpInvocationContext);
+          if (Option.isNone(scope))
+            return new McpSchema.CallToolResult({
+              isError: true,
+              content: [
+                { type: "text", text: "Could not verify this call's Bara tool permissions." },
+              ],
+            });
+          const refusal = yield* guard.value
+            .check(
+              scope.value,
+              options.tool.name,
+              options.tool.annotations?.readOnlyHint === true,
+              payload,
+            )
+            .pipe(Effect.flip, Effect.option);
+          if (Option.isSome(refusal))
+            return new McpSchema.CallToolResult({
+              isError: true,
+              content: [{ type: "text", text: refusal.value.message }],
+            });
+          return yield* options.handle(payload);
+        }),
+      });
+    }),
+  });
+  return yield* registration.pipe(Effect.provideService(McpServer.McpServer, secured));
+});
+
 /** `McpServer.registerToolkit` advertises the full codec schema; agents get the compact one. */
 const withAdvertisedSchemas = Effect.fn("McpHttpServer.withAdvertisedSchemas")(function* <
   Tools extends Record<string, Tool.Any>,
@@ -1069,8 +1125,10 @@ export const toolkitRegistration = <Tools extends Record<string, Tool.Any>, EX, 
   handlers: McpToolAccess.HandlersLayer<Tools, EX, RX>,
 ) =>
   Layer.effectDiscard(
-    withToolAnalytics(
-      withAdvertisedSchemas(toolkit, McpServer.registerToolkit(decodeAsAdvertised(toolkit))),
+    withBotToolAccess(
+      withToolAnalytics(
+        withAdvertisedSchemas(toolkit, McpServer.registerToolkit(decodeAsAdvertised(toolkit))),
+      ),
     ),
   ).pipe(
     Layer.provide(
@@ -1086,7 +1144,7 @@ const imageToolRegistration = <Tools extends Record<string, Tool.Any>, A, E, R, 
   register: Effect.Effect<A, E, R>,
   handlers: McpToolAccess.HandlersLayer<Tools, EX, RX>,
 ) =>
-  Layer.effectDiscard(withToolAnalytics(register)).pipe(
+  Layer.effectDiscard(withBotToolAccess(withToolAnalytics(register))).pipe(
     Layer.provide(McpToolAccess.HandlersLayer.layer(handlers)),
   );
 
@@ -1190,17 +1248,23 @@ export const layerMcpTransport = <RA, RE, RR>(registrations: Layer.Layer<RA, RE,
 
 /** Every tool the T3 MCP server advertises. AgentContextBudget.test.ts measures this set. */
 export const layerTools = Layer.mergeAll(
+  toolkitRegistration(BotsToolkit, BotsHandlers.layer),
+  toolkitRegistration(MemoryToolkit, MemoryHandlers.layer),
   layerPreviewToolkit,
   layerOrchestratorToolkit,
   layerThreadToolkit,
   layerAttachmentToolkit,
   layerProjectRegistration,
+  toolkitRegistration(PagesToolkit, PagesHandlers.layer),
+  toolkitRegistration(StudioToolkit, StudioHandlers.layer),
+  toolkitRegistration(NotesToolkit, NotesHandlers.layer),
+  toolkitRegistration(GoalsToolkit, GoalsHandlers.layer),
   layerEnvironmentToolkit,
   layerPreviewControlsRegistration,
   layerWorktreeToolkitRegistration,
   layerPullRequestsToolkit,
   layerDeviceToolkit,
   layerHtmlToolkit,
-);
+).pipe(Layer.provide(BotToolAccess.layer));
 
 export const layer = layerMcpTransport(layerTools);

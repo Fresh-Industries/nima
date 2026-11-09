@@ -8,13 +8,21 @@ import { useState } from "react";
 import { expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
+import "~/index.css";
+
 import { act, render } from "../../../test/render";
 import { deriveProviderInstanceEntries } from "../../providerInstances";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 
 const instanceId = ProviderInstanceId.make("codex");
 
-function Picker({ keybindings = [] }: { keybindings?: ResolvedKeybindingsConfig }) {
+function Picker({
+  keybindings = [],
+  personal = false,
+}: {
+  keybindings?: ResolvedKeybindingsConfig;
+  personal?: boolean;
+}) {
   const [model, setModel] = useState("original");
   return (
     <>
@@ -52,11 +60,29 @@ function Picker({ keybindings = [] }: { keybindings?: ResolvedKeybindingsConfig 
           ])
         }
         triggerAriaLabel="Choose model"
+        {...(personal
+          ? { effortColumn: null, footer: <button>Execution permissions</button> }
+          : {})}
         onInstanceModelChange={(_, selected) => setModel(selected)}
       />
     </>
   );
 }
+
+it("keeps footer actions accessible without the personal assistant's effort column", async () => {
+  await using screen = await render(<Picker personal />);
+  await page.getByRole("button", { name: "Choose model" }).click();
+  const permissions = page.getByRole("button", { name: "Execution permissions" });
+  await expect.element(permissions).toBeVisible();
+  await page.getByPlaceholder("Search models...").fill("Target");
+  await page.getByRole("option", { name: /Target model/ }).click();
+  await expect
+    .element(screen.getByRole("status", { name: "Selected model" }))
+    .toHaveTextContent("target");
+  await expect.element(permissions).toBeVisible();
+  await userEvent.keyboard("{Escape}");
+  await expect.element(permissions).not.toBeInTheDocument();
+});
 
 it("keeps composition keys out of model selection and dismissal", async () => {
   await using screen = await render(<Picker />);

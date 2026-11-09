@@ -1,3 +1,4 @@
+import * as PersonalAgent from "../personalAgent/PersonalAgent.ts";
 import {
   CommandId,
   MessageId,
@@ -18,6 +19,8 @@ import {
   type ScheduledTaskWebhookDeliveryOutcome,
   type ScheduledTaskWebhookFilter,
   type ScheduledTaskListResult,
+  ScheduledTaskListRunsResult,
+  type ScheduledTaskListRunsInput,
   type ScheduledTaskMutationResult,
   type ScheduledTaskRunNowInput,
   type ScheduledTaskRunNowResult,
@@ -54,6 +57,7 @@ import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import * as DueHint from "../scheduling/DueHint.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
+import { goalCheckinPrompt } from "./goalCheckin.ts";
 import { isMissedFixedTimeRun, isSameSchedule, nextScheduledRunAt } from "./Schedule.ts";
 import {
   redactHeaders,
@@ -197,6 +201,9 @@ interface ScheduledTaskRow {
   readonly schedule_json: string;
   readonly project_id: string;
   readonly thread_id: string | null;
+  readonly goal_id: string | null;
+  readonly owner_bot_id: string | null;
+  readonly owner_archived?: number;
   readonly workspace_strategy_json: string;
   readonly model_selection_json: string;
   readonly runtime_mode: string;
@@ -237,6 +244,9 @@ export class ScheduledTaskService extends Context.Service<
   {
     readonly list: () => Effect.Effect<ScheduledTaskListResult, ScheduledTaskError>;
     readonly subscribeList: () => Stream.Stream<ScheduledTaskListResult, ScheduledTaskError>;
+    readonly listRuns: (
+      input: ScheduledTaskListRunsInput,
+    ) => Effect.Effect<ScheduledTaskListRunsResult, ScheduledTaskError>;
     readonly upsert: (
       input: ScheduledTaskUpsertInput,
     ) => Effect.Effect<ScheduledTaskMutationResult, ScheduledTaskError>;
@@ -289,6 +299,7 @@ function iso(value: DateTime.DateTime): string {
 }
 
 const localNow = DateTime.withCurrentZoneLocal(DateTime.nowInCurrentZone);
+const decodeRunHistory = Schema.decodeUnknownEffect(ScheduledTaskListRunsResult);
 
 function nextRunAt(
   task: Pick<ScheduledTask, "enabled" | "schedule">,
@@ -371,6 +382,11 @@ const decodeRow = Effect.fnUntraced(
       schedule,
       projectId: row.project_id,
       threadId: row.thread_id,
+      goalId: row.goal_id,
+      ownerBotId: row.owner_bot_id ?? null,
+      ...(row.owner_bot_id && row.owner_archived === 1
+        ? { blockedByPolicy: "This routine’s Bot is archived. Restore the Bot to run it." }
+        : {}),
       workspaceStrategy,
       modelSelection,
       runtimeMode: row.runtime_mode,
@@ -439,6 +455,7 @@ export const layer = Layer.effect(
     const random = yield* SecureRandom.SecureRandom;
     const threadLaunch = yield* ThreadLaunchService.ThreadLaunchService;
     const threadManagement = yield* ThreadManagementService.ThreadManagementService;
+    const personalAgent = yield* PersonalAgent.PersonalAgent;
     const managedFolders = yield* ManagedProjectFolders.ManagedProjectFolders;
     const secretRequests = yield* SecretRequests.SecretRequests;
     const scheduler = yield* Scheduler.Scheduler;
@@ -491,6 +508,9 @@ export const layer = Layer.effect(
         schedule_json,
         project_id,
         thread_id,
+        goal_id,
+        owner_bot_id,
+        COALESCE((SELECT archived FROM workspace_bots WHERE bot_id=owner_bot_id),1) AS owner_archived,
         workspace_strategy_json,
         model_selection_json,
         runtime_mode,
@@ -532,6 +552,9 @@ export const layer = Layer.effect(
         schedule_json,
         project_id,
         thread_id,
+        goal_id,
+        owner_bot_id,
+        COALESCE((SELECT archived FROM workspace_bots WHERE bot_id=owner_bot_id),1) AS owner_archived,
         workspace_strategy_json,
         model_selection_json,
         runtime_mode,
@@ -592,6 +615,7 @@ export const layer = Layer.effect(
     const saveTask = (
       task: ScheduledTask,
       requireExisting: boolean,
+      expectedOwner: ScheduledTask["ownerBotId"],
       /** The schedule this save read, when it left the schedule unchanged. */
       keptSchedule: ScheduledTask["schedule"] | null,
       webhook: {
@@ -609,6 +633,8 @@ export const layer = Layer.effect(
           schedule_json,
           project_id,
           thread_id,
+          goal_id,
+          owner_bot_id,
           workspace_strategy_json,
           model_selection_json,
           runtime_mode,
@@ -633,6 +659,8 @@ export const layer = Layer.effect(
           ${JSON.stringify(task.schedule)},
           ${task.projectId},
           ${task.threadId},
+          ${task.goalId ?? null},
+          ${task.ownerBotId ?? null},
           ${JSON.stringify(task.workspaceStrategy)},
           ${JSON.stringify(task.modelSelection)},
           ${task.runtimeMode},
@@ -648,8 +676,9 @@ export const layer = Layer.effect(
           ${task.runCount},
           ${webhook.token},
           ${webhook.secret}
-        WHERE ${requireExisting ? 0 : 1} = 1
-           OR EXISTS (SELECT 1 FROM scheduled_tasks WHERE task_id = ${task.id})
+        WHERE (${requireExisting ? 0 : 1} = 1
+           OR EXISTS (SELECT 1 FROM scheduled_tasks WHERE task_id = ${task.id}))
+          AND (SELECT owner_bot_id FROM scheduled_tasks WHERE task_id=${task.id}) IS ${expectedOwner ?? null}
         ON CONFLICT (task_id)
         DO UPDATE SET
           title = excluded.title,
@@ -658,6 +687,8 @@ export const layer = Layer.effect(
           schedule_json = excluded.schedule_json,
           project_id = excluded.project_id,
           thread_id = excluded.thread_id,
+          goal_id = excluded.goal_id,
+          owner_bot_id = excluded.owner_bot_id,
           workspace_strategy_json = excluded.workspace_strategy_json,
           model_selection_json = excluded.model_selection_json,
           runtime_mode = excluded.runtime_mode,
@@ -694,7 +725,19 @@ export const layer = Layer.effect(
         Effect.flatMap((rows) =>
           rows.length > 0
             ? Effect.void
-            : taskError("Schedule task not found.", { taskId: task.id }),
+            : sql`SELECT task_id FROM scheduled_tasks WHERE task_id=${task.id}`.pipe(
+                Effect.mapError((cause) =>
+                  taskError("Could not reload the schedule task.", { taskId: task.id, cause }),
+                ),
+                Effect.flatMap((current) =>
+                  taskError(
+                    current.length
+                      ? "This routine’s owner changed. Reload it before saving."
+                      : "Schedule task not found.",
+                    { taskId: task.id },
+                  ),
+                ),
+              ),
         ),
       );
 
@@ -842,6 +885,110 @@ export const layer = Layer.effect(
         ) {
           return { task: active, threadId: null, dispatchFailed: false };
         }
+        if (active.ownerBotId != null) {
+          const [owner] = yield* sql<{
+            archived: number;
+            project_allowed: number;
+          }>`SELECT archived,CASE WHEN json_type(capabilities_json,'$.toolPolicy.projectIds')='null' OR EXISTS(SELECT 1 FROM json_each(capabilities_json,'$.toolPolicy.projectIds') WHERE value=${active.projectId}) THEN 1 ELSE 0 END AS project_allowed FROM workspace_bots WHERE bot_id=${active.ownerBotId}`.pipe(
+            Effect.mapError((cause) =>
+              taskError("Could not read the routine owner.", { taskId: active.id, cause }),
+            ),
+          );
+          const projectAllowed =
+            owner?.project_allowed === 1 ||
+            (owner !== undefined && (yield* managedFolders.isScratchProject(active.projectId)));
+          if (owner?.archived !== 0 || !projectAllowed) {
+            if (webhook !== undefined)
+              return yield* new WebhookDeliverySkipped({
+                reason:
+                  "The owning Bot is archived, unavailable or no longer authorized for this project.",
+              });
+            if (trigger === "manual")
+              return yield* taskError(
+                "Restore the owning Bot and its project access before running this routine.",
+                {
+                  taskId: active.id,
+                },
+              );
+            const next = nextRunAt(
+              { enabled: active.enabled, schedule: active.schedule },
+              startedAt,
+            );
+            yield* sql`UPDATE scheduled_tasks SET next_run_at=${next} WHERE task_id=${active.id} AND updated_at=${active.updatedAt} AND next_run_at=${active.nextRunAt}`.pipe(
+              Effect.mapError((cause) =>
+                taskError("Could not defer the archived Bot’s routine.", {
+                  taskId: active.id,
+                  cause,
+                }),
+              ),
+            );
+            yield* notifyChanged;
+            return { task: { ...active, nextRunAt: next }, threadId: null, dispatchFailed: false };
+          }
+        }
+        if (active.ownerBotId != null && webhook === undefined) {
+          const [busy] =
+            yield* sql`SELECT 1 FROM orchestration_v2_projection_messages message WHERE message.role='user' AND json_extract(message.payload_json,'$.scheduledTaskId')=${active.id} AND (EXISTS(SELECT 1 FROM workspace_work_activity activity WHERE activity.thread_id=message.thread_id AND activity.busy=1) OR EXISTS(SELECT 1 FROM orchestration_v2_projection_runs run WHERE run.thread_id=message.thread_id AND run.status IN ('preparing','queued','starting','running','waiting'))) LIMIT 1`.pipe(
+              Effect.mapError((cause) =>
+                taskError("Could not check this routine’s active work.", {
+                  taskId: active.id,
+                  cause,
+                }),
+              ),
+            );
+          if (busy) {
+            if (trigger === "manual")
+              return yield* taskError(
+                "This routine still has active work. Open its conversation or wait for it to finish.",
+                { taskId: active.id },
+              );
+            const next =
+              active.schedule.type === "once"
+                ? iso(DateTime.add(startedAt, { minutes: 1 }))
+                : nextRunAt({ enabled: active.enabled, schedule: active.schedule }, startedAt);
+            yield* sql`UPDATE scheduled_tasks SET next_run_at=${next} WHERE task_id=${active.id} AND updated_at=${active.updatedAt} AND next_run_at=${active.nextRunAt}`.pipe(
+              Effect.mapError((cause) =>
+                taskError("Could not defer this routine’s overlapping run.", {
+                  taskId: active.id,
+                  cause,
+                }),
+              ),
+            );
+            yield* notifyChanged;
+            return { task: { ...active, nextRunAt: next }, threadId: null, dispatchFailed: false };
+          }
+        }
+        if (active.goalId != null) {
+          const [goal] = yield* sql<{
+            status: string;
+          }>`SELECT json_extract(content_json, '$.status') AS status FROM workspace_goals WHERE id = ${active.goalId}`.pipe(
+            Effect.mapError((cause) =>
+              taskError("Could not read the linked goal.", { taskId: active.id, cause }),
+            ),
+          );
+          if (goal?.status !== "active") {
+            if (webhook !== undefined)
+              return yield* new WebhookDeliverySkipped({
+                reason: "The linked goal is not active.",
+              });
+            if (trigger === "manual")
+              return yield* taskError("Reactivate this goal before running its check-in.", {
+                taskId: active.id,
+              });
+            const next = nextRunAt(
+              { enabled: active.enabled, schedule: active.schedule },
+              startedAt,
+            );
+            yield* sql`UPDATE scheduled_tasks SET next_run_at = ${next} WHERE task_id = ${active.id} AND updated_at = ${active.updatedAt} AND next_run_at = ${active.nextRunAt}`.pipe(
+              Effect.mapError((cause) =>
+                taskError("Could not defer this goal check-in.", { taskId: active.id, cause }),
+              ),
+            );
+            yield* notifyChanged;
+            return { task: { ...active, nextRunAt: next }, threadId: null, dispatchFailed: false };
+          }
+        }
+
         // Reject queued deliveries after pause, same-id recreation or trigger changes.
         if (webhook !== undefined) {
           const reason =
@@ -856,6 +1003,24 @@ export const layer = Layer.effect(
                     : null;
           if (reason !== null) return yield* new WebhookDeliverySkipped({ reason });
         }
+
+        const fireKey =
+          webhook === undefined
+            ? `${active.id}:${DateTime.toEpochMillis(startedAt)}:${trigger}`
+            : `${active.id}:webhook:${webhook.deliveryId}`;
+        const commandId = CommandId.make(`scheduled-task:${fireKey}`);
+        const messageId = MessageId.make(`scheduled-task-message:${fireKey}`);
+        if (active.goalId != null)
+          yield* sql`INSERT INTO workspace_goal_checkin_messages (message_id, goal_id, task_id)
+          VALUES (${messageId}, ${active.goalId}, ${active.id}) ON CONFLICT(message_id) DO NOTHING`.pipe(
+            Effect.mapError((cause) =>
+              taskError("Could not link the goal check-in result.", { taskId: active.id, cause }),
+            ),
+          );
+        const prompt =
+          active.goalId == null
+            ? (webhook?.prompt ?? active.prompt)
+            : goalCheckinPrompt(active.goalId, webhook?.prompt ?? active.prompt);
 
         if (webhook === undefined) yield* markRunning(active.id, startedAtIso);
         else
@@ -874,14 +1039,6 @@ export const layer = Layer.effect(
             );
 
         yield* notifyChanged;
-
-        const fireKey =
-          webhook === undefined
-            ? `${active.id}:${DateTime.toEpochMillis(startedAt)}:${trigger}`
-            : `${active.id}:webhook:${webhook.deliveryId}`;
-        const commandId = CommandId.make(`scheduled-task:${fireKey}`);
-        const messageId = MessageId.make(`scheduled-task-message:${fireKey}`);
-        const prompt = webhook?.prompt ?? active.prompt;
 
         // A bound thread can move to another project (No project to a project) while
         // this fires. Follow it; one move needs at most two retries. Same ids replay safely.
@@ -920,28 +1077,48 @@ export const layer = Layer.effect(
             );
 
         // Capture defects and interrupts too so dispatch failures still reach markCompleted.
+        yield* personalAgent.recordJobRun(messageId, active.id);
+        const ownedThreadId = active.ownerBotId == null ? undefined : ThreadId.make(commandId);
+        const prepareOwnedRun = Effect.gen(function* () {
+          if (ownedThreadId === undefined) return;
+          const scopeProjectId = (yield* managedFolders.isScratchProject(active.projectId))
+            ? null
+            : active.projectId;
+          yield* sql`INSERT INTO workspace_thread_metadata(thread_id,kind,title,objective,updated_at,coordinator_bot_id,scope_project_id,configuration_revision) VALUES(${ownedThreadId},'focus',${active.title},${active.prompt},${startedAtIso},${active.ownerBotId ?? null},${scopeProjectId},1) ON CONFLICT(thread_id) DO NOTHING`;
+        }).pipe(
+          Effect.mapError((cause) =>
+            taskError("Could not prepare this Bot’s routine conversation.", {
+              taskId: active.id,
+              cause,
+            }),
+          ),
+        );
         const result =
           active.threadId === null
             ? yield* Effect.exit(
-                threadLaunch
-                  .launch({
-                    commandId,
-                    projectId: active.projectId,
-                    title: active.title,
-                    modelSelection: active.modelSelection,
-                    runtimeMode: active.runtimeMode,
-                    interactionMode: active.interactionMode,
-                    workspaceStrategy: active.workspaceStrategy,
-                    initialMessage: {
-                      messageId,
-                      scheduledTaskId: active.id,
-                      text: prompt,
-                      attachments: [],
-                    },
-                    createdBy: active.createdBy,
-                    creationSource: active.creationSource,
-                  })
-                  .pipe(Effect.map((launched) => launched.threadId)),
+                prepareOwnedRun.pipe(
+                  Effect.andThen(
+                    threadLaunch.launch({
+                      commandId,
+                      ...(ownedThreadId === undefined ? {} : { threadId: ownedThreadId }),
+                      projectId: active.projectId,
+                      title: active.title,
+                      modelSelection: active.modelSelection,
+                      runtimeMode: active.runtimeMode,
+                      interactionMode: active.interactionMode,
+                      workspaceStrategy: active.workspaceStrategy,
+                      initialMessage: {
+                        messageId,
+                        scheduledTaskId: active.id,
+                        text: prompt,
+                        attachments: [],
+                      },
+                      createdBy: active.createdBy,
+                      creationSource: active.creationSource,
+                    }),
+                  ),
+                  Effect.map((launched) => launched.threadId),
+                ),
               )
             : yield* Effect.exit(
                 // The stored selection only seeds fresh threads. A bound run
@@ -1236,6 +1413,56 @@ export const layer = Layer.effect(
       // keep their run history, and so real load failures propagate instead
       // of silently resetting an existing row.
       const existingTask = yield* findTask(id);
+      const ownerBotId =
+        input.ownerBotId === undefined ? (existingTask?.ownerBotId ?? null) : input.ownerBotId;
+      let ownerTimeZone: string | undefined;
+      if (ownerBotId !== null) {
+        const [owner] = yield* sql<{
+          archived: number;
+          timezone: string;
+          projects_restricted: number;
+        }>`SELECT archived,CASE WHEN json_type(capabilities_json,'$.toolPolicy.projectIds')='array' THEN 1 ELSE 0 END AS projects_restricted,json_extract(config_json,'$.timezone') AS timezone FROM workspace_bots WHERE bot_id=${ownerBotId}`.pipe(
+          Effect.mapError((cause) =>
+            taskError("Could not read this routine’s Bot.", { taskId: id, cause }),
+          ),
+        );
+        if (!owner || (owner.archived === 1 && input.enabled))
+          return yield* taskError(
+            "Choose an available Bot, or restore its identity before enabling this routine.",
+            { taskId: id },
+          );
+        ownerTimeZone = owner.timezone;
+        if (
+          owner.projects_restricted === 1 &&
+          !(yield* managedFolders.isScratchProject(input.projectId))
+        ) {
+          const [allowed] =
+            yield* sql`SELECT bot_id FROM workspace_bots WHERE bot_id=${ownerBotId} AND (json_type(capabilities_json,'$.toolPolicy.projectIds')='null' OR EXISTS(SELECT 1 FROM json_each(capabilities_json,'$.toolPolicy.projectIds') WHERE value=${input.projectId}))`.pipe(
+              Effect.mapError((cause) =>
+                taskError("Could not verify this routine’s project access.", { taskId: id, cause }),
+              ),
+            );
+          if (!allowed)
+            return yield* taskError("This Bot is not authorized for that routine project.", {
+              taskId: id,
+            });
+        }
+        if (input.threadId != null)
+          return yield* taskError(
+            "Bot routines need a new conversation per run. Unbind this routine from the existing chat.",
+            { taskId: id },
+          );
+      }
+      const goalId = input.goalId === undefined ? existingTask?.goalId : input.goalId;
+      if (goalId != null) {
+        const rows = yield* sql`SELECT id FROM workspace_goals WHERE id = ${goalId}`.pipe(
+          Effect.mapError((cause) =>
+            taskError("Could not read the linked goal.", { taskId: id, cause }),
+          ),
+        );
+        if (!rows.length)
+          return yield* taskError("Save the goal before scheduling its check-in.", { taskId: id });
+      }
       // Keep the existing next_run_at when the schedule itself is untouched:
       // editing a title or prompt must not postpone (or resurrect) a due
       // run — only schedule/enabled changes restart the clock.
@@ -1269,7 +1496,16 @@ export const layer = Layer.effect(
             }
           : input.schedule.type === "once"
             ? { type: "once", runAt: iso(DateTime.makeUnsafe(input.schedule.runAt)) }
-            : input.schedule;
+            : input.schedule.type === "fixed_time" &&
+                input.schedule.timeZone === undefined &&
+                existingTask?.schedule.type === "fixed_time" &&
+                existingTask.schedule.timeZone
+              ? { ...input.schedule, timeZone: existingTask.schedule.timeZone }
+              : input.schedule.type === "fixed_time" &&
+                  input.schedule.timeZone === undefined &&
+                  ownerTimeZone
+                ? { ...input.schedule, timeZone: ownerTimeZone }
+                : input.schedule;
       const webhook =
         input.schedule.type === "webhook"
           ? yield* Effect.gen(function* () {
@@ -1325,6 +1561,8 @@ export const layer = Layer.effect(
         schedule,
         projectId: input.projectId,
         threadId: input.threadId ?? null,
+        goalId: input.goalId === undefined ? (existingTask?.goalId ?? null) : input.goalId,
+        ownerBotId,
         workspaceStrategy,
         modelSelection: input.modelSelection,
         runtimeMode: input.runtimeMode,
@@ -1344,6 +1582,7 @@ export const layer = Layer.effect(
       yield* saveTask(
         task,
         input.requireExisting === true,
+        existingTask?.ownerBotId ?? null,
         scheduleUnchanged ? existingTask.schedule : null,
         webhook,
       );
@@ -1432,12 +1671,49 @@ export const layer = Layer.effect(
         { discard: true },
       );
 
-    const deleteTask: ScheduledTaskService["Service"]["delete"] = (input) =>
-      deleteRow(input.id).pipe(
-        Effect.andThen(forgetWebhookTask(input.id)),
-        Effect.andThen(notifyChanged),
-        Effect.as({ id: input.id }),
-      );
+    const revokeDeletedTaskGrants = Effect.fn("ScheduledTaskService.revokeDeletedTaskGrants")(
+      function* (ids: ReadonlyArray<ScheduledTaskId>) {
+        if (!ids.length) return;
+        const profile = yield* personalAgent.read();
+        if (!profile.config.personalMemoryTaskIds.length) return;
+        const existing = yield* sql<{
+          task_id: ScheduledTaskId;
+        }>`SELECT task_id FROM scheduled_tasks`;
+        const available = new Set(existing.map((row) => row.task_id));
+        const removed = new Set(ids);
+        const personalMemoryTaskIds = profile.config.personalMemoryTaskIds.filter(
+          (id) => !removed.has(id) && available.has(id),
+        );
+        if (personalMemoryTaskIds.length === profile.config.personalMemoryTaskIds.length) return;
+        const saved = yield* personalAgent.write({
+          config: { ...profile.config, personalMemoryTaskIds },
+          expectedRevision: profile.revision,
+        });
+        if (saved.status !== "saved")
+          return yield* taskError(
+            "Assistant settings changed. Reload before deleting this routine.",
+          );
+      },
+      Effect.mapError((cause) =>
+        taskError("Could not revoke the deleted routine’s memory access.", { cause }),
+      ),
+    );
+    const deleteTask: ScheduledTaskService["Service"]["delete"] = Effect.fn(
+      "ScheduledTaskService.delete",
+    )(function* (input) {
+      yield* sql
+        .withTransaction(
+          revokeDeletedTaskGrants([input.id]).pipe(Effect.andThen(deleteRow(input.id))),
+        )
+        .pipe(
+          Effect.mapError((cause) =>
+            taskError("Could not delete schedule task.", { taskId: input.id, cause }),
+          ),
+        );
+      yield* forgetWebhookTask(input.id);
+      yield* notifyChanged;
+      return { id: input.id };
+    });
 
     const deleteForThread = Effect.fn("ScheduledTaskService.deleteForThread")(function* (
       threadId: ThreadId,
@@ -1447,6 +1723,10 @@ export const layer = Layer.effect(
       const removed = yield* sql
         .withTransaction(
           Effect.gen(function* () {
+            const deleting = yield* sql<{
+              task_id: ScheduledTaskId;
+            }>`SELECT task_id FROM scheduled_tasks WHERE thread_id=${threadId}`;
+            yield* revokeDeletedTaskGrants(deleting.map((row) => row.task_id));
             yield* sql`
             DELETE FROM scheduled_task_webhook_deliveries
             WHERE task_id IN (SELECT task_id FROM scheduled_tasks WHERE thread_id = ${threadId})
@@ -2405,9 +2685,61 @@ export const layer = Layer.effect(
     });
     yield* scheduler.register("webhook-coalescing", dispatchPending());
 
+    const listRuns = Effect.fn("ScheduledTaskService.listRuns")(
+      function* (input: ScheduledTaskListRunsInput) {
+        if ((yield* findTask(input.id)) === null)
+          return yield* taskError("This bot no longer exists.", { taskId: input.id });
+        const limit = Math.max(1, Math.min(100, input.limit ?? 20));
+        const rows = yield* sql<{
+          messageId: string;
+          threadId: string;
+          threadTitle: string;
+          runId: string | null;
+          status: string | null;
+          createdAt: string;
+          completedAt: string | null;
+        }>`SELECT message.message_id AS messageId, message.thread_id AS threadId,
+          thread.title AS threadTitle, run.run_id AS runId, run.status AS status,
+          message.created_at AS createdAt, run.completed_at AS completedAt
+        FROM orchestration_v2_projection_messages AS message
+        JOIN orchestration_v2_projection_threads AS thread ON thread.thread_id = message.thread_id
+        LEFT JOIN orchestration_v2_projection_runs AS run
+          ON run.thread_id = message.thread_id
+          AND run.run_id = (
+            SELECT matched.run_id FROM orchestration_v2_projection_runs AS matched
+            WHERE matched.thread_id = message.thread_id
+              AND json_extract(matched.payload_json, '$.userMessageId') = message.message_id
+            ORDER BY matched.ordinal DESC LIMIT 1
+          )
+        WHERE message.role = 'user'
+          AND json_extract(message.payload_json, '$.scheduledTaskId') = ${input.id}
+          AND thread.deleted_at IS NULL
+          AND (${input.before === undefined ? 1 : 0} = 1
+            OR message.created_at < ${input.before?.createdAt ?? ""}
+            OR (message.created_at = ${input.before?.createdAt ?? ""}
+              AND message.message_id < ${input.before?.messageId ?? ""}))
+        ORDER BY message.created_at DESC, message.message_id DESC LIMIT ${limit + 1}`;
+        const runs = rows.slice(0, limit);
+        const last = runs.at(-1);
+        return yield* decodeRunHistory({
+          runs,
+          nextCursor:
+            rows.length > limit && last
+              ? { createdAt: last.createdAt, messageId: last.messageId }
+              : null,
+        });
+      },
+      Effect.mapError((cause) =>
+        isScheduledTaskError(cause)
+          ? cause
+          : taskError("Could not read bot run history.", { cause }),
+      ),
+    );
+
     return ScheduledTaskService.of({
       list,
       subscribeList,
+      listRuns,
       upsert,
       setEnabled,
       delete: deleteTask,
@@ -2420,4 +2752,4 @@ export const layer = Layer.effect(
       triggerWebhook,
     });
   }),
-);
+).pipe(Layer.provide(PersonalAgent.layer));

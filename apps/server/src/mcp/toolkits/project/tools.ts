@@ -1,5 +1,7 @@
+import * as BotDelegation from "../../../bots/BotDelegation.ts";
 import { McpAttachmentInput } from "../attachment/input.ts";
 import {
+  BotId,
   NonNegativeInt,
   ModelSelection,
   TrimmedNonEmptyString,
@@ -124,9 +126,15 @@ const ProjectCloneTool = Tool.make("t3_project_clone", {
 const ThreadLaunchTool = Tool.make("t3_thread_launch", {
   ...shared,
   description:
-    "Create one new top-level thread, bound to its workspace before the agent starts. Task in `message`. Omit `projectId`, model and modes to inherit yours (outside a thread, pass `projectId` or `scratch`); modes cannot exceed yours. After an error or lost reply, retry with the same `clientRequestId`. Follow it with `t3_thread_read` or `t3_thread_wait`. Mention it with its `link`.",
+    "Create one new top-level thread, bound to its workspace before the agent starts. Task in `message`. Omit `projectId`, model and modes to inherit yours (outside a thread, pass `projectId` or `scratch`); modes cannot exceed yours. After an error or lost reply, retry with the same `clientRequestId`. Follow it with `t3_thread_read` or `t3_thread_wait`. Mention it with its `link`. Assign an existing Bara teammate with `coordinatorBotId` from t3_bot_list; Bot work observes server depth, concurrency and task limits.",
   parameters: Schema.Struct({
     environmentId: OrchestratorMcpEnvironmentTarget,
+    coordinatorBotId: Schema.optional(
+      BotId.annotate({
+        description:
+          "Persistent Bot id from t3_bot_list. Applies its instructions to this new Work session without importing its other chats.",
+      }),
+    ),
     projectId: Schema.optional(ProjectId),
     scratch: Schema.optional(
       Schema.Boolean.annotate({
@@ -164,6 +172,7 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
   }),
   dependencies: [
     ...shared.dependencies,
+    BotDelegation.BotDelegation,
     ThreadLaunchService.ThreadLaunchService,
     ManagedProjectFolders.ManagedProjectFolders,
     GitVcsDriver.GitVcsDriver,

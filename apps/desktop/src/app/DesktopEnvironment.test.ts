@@ -68,8 +68,22 @@ describe("DesktopEnvironment", () => {
       );
       const production = yield* makeEnvironment();
 
-      assert.equal(development.stateDir, "/Users/alice/.t3/dev");
-      assert.equal(production.stateDir, "/Users/alice/.t3/userdata");
+      assert.equal(development.stateDir, "/Users/alice/.bara/dev");
+      assert.equal(production.stateDir, "/Users/alice/.bara/userdata");
+    }),
+  );
+
+  it.effect("isolates Bara from an ambient T3 home and honors only its own override", () =>
+    Effect.gen(function* () {
+      const isolated = yield* makeEnvironment(
+        { platform: "win32", isPackaged: true },
+        { T3CODE_HOME: "/existing-t3" },
+      );
+      assert.equal(isolated.stateDir, "/Users/alice/.bara/userdata");
+      assert.equal(isolated.appUserModelId, "com.freshindustries.bara");
+      assert.equal(isolated.branding.baseName, "Bara");
+      const configured = yield* makeEnvironment({}, { BARA_HOME: "/bara-data" });
+      assert.equal(configured.stateDir, "/bara-data/userdata");
     }),
   );
 });

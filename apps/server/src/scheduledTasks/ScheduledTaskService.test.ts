@@ -31,6 +31,122 @@ import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ScheduledTaskService from "./ScheduledTaskService.ts";
 import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
+import * as WorkspaceGoals from "../workspace/WorkspaceGoals.ts";
+
+it.effect(
+  "retains the goal link through edits and waits for an active goal before dispatching a check-in",
+  () =>
+    Effect.gen(function* () {
+      const launches = yield* Ref.make(0);
+      const tick = yield* Ref.make<Effect.Effect<void> | null>(null);
+      const sql = yield* SqlClient.SqlClient;
+      const dependencies = Layer.mergeAll(
+        ManagedPolicy.layerTest(),
+        NodeCrypto.layer,
+        Layer.succeed(Scheduler.Scheduler, {
+          register: <E, R>(name: string, effect: Effect.Effect<void, E, R>) =>
+            Effect.gen(function* () {
+              const context = yield* Effect.context<R>();
+              if (name === "scheduled-tasks")
+                yield* Ref.set(tick, effect.pipe(Effect.provideContext(context), Effect.orDie));
+            }),
+        }),
+        Layer.mock(ThreadLaunchService.ThreadLaunchService)({
+          launch: () =>
+            Ref.update(launches, (count) => count + 1).pipe(
+              Effect.as({ threadId: ThreadId.make("goal-checkin-run") } as never),
+            ),
+        }),
+        Layer.mock(ThreadManagementService.ThreadManagementService)({}),
+        Layer.mock(SecretRequests.SecretRequests)({}),
+        Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+          namedProjectsRoot: "/projects",
+          isScratchProject: () => Effect.succeed(false),
+        }),
+      );
+      yield* Effect.gen(function* () {
+        const goals = yield* WorkspaceGoals.WorkspaceGoals;
+        const service = yield* ScheduledTaskService.ScheduledTaskService;
+        const content = {
+          title: "Write a field guide",
+          kind: "goal" as const,
+          status: "active" as const,
+          context: "",
+          targetDate: null,
+          plan: "Draft chapter one",
+          nextStep: "Outline",
+          milestones: [],
+          guidance: { cadence: "weekly" as const, instructions: "Keep it short" },
+        };
+        yield* goals.write({ id: "guide", content, expectedRevision: 0 });
+        const input = {
+          id: ScheduledTaskId.make("goal-checkin"),
+          goalId: "guide",
+          title: "Guide check-in",
+          prompt: "Suggest one next step",
+          enabled: true,
+          schedule: { type: "interval" as const, everyMs: 60_000 },
+          projectId: ProjectId.make("project:guide"),
+          workspaceStrategy: { type: "root" as const },
+          modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
+          runtimeMode: "approval-required" as const,
+          interactionMode: "default" as const,
+        };
+        const { task } = yield* service.upsert(input);
+        const { goalId: _goalId, ...legacyEdit } = input;
+        assert.equal(
+          (yield* service.upsert({ ...legacyEdit, title: "Renamed" })).task.goalId,
+          "guide",
+        );
+        assert.equal((yield* service.list()).tasks[0]?.goalId, "guide");
+        assert.isTrue(
+          Exit.isFailure(yield* service.upsert({ ...input, goalId: "missing" }).pipe(Effect.exit)),
+        );
+        for (const status of ["paused", "completed", "archived"] as const) {
+          const current = yield* goals.read({ id: "guide" });
+          yield* goals.write({
+            id: "guide",
+            content: { ...content, status },
+            expectedRevision: current!.revision,
+          });
+          assert.isTrue(Exit.isFailure(yield* service.runNow({ id: task.id }).pipe(Effect.exit)));
+        }
+        assert.equal(yield* Ref.get(launches), 0);
+        yield* TestClock.setTime(Date.parse(task.nextRunAt!) + 1);
+        yield* (yield* Ref.get(tick))!;
+        const waiting = (yield* service.list()).tasks[0]!;
+        assert.equal(waiting.runCount, 0);
+        assert.isTrue(waiting.enabled);
+        assert.isTrue(Date.parse(waiting.nextRunAt!) > Date.parse(task.nextRunAt!));
+        const current = yield* goals.read({ id: "guide" });
+        yield* goals.write({ id: "guide", content, expectedRevision: current!.revision });
+        yield* service.runNow({ id: task.id });
+        assert.equal(yield* Ref.get(launches), 1);
+        assert.equal((yield* service.list()).tasks[0]?.runCount, 1);
+        assert.equal(
+          (yield* sql<{ goal_id: string }>`SELECT goal_id FROM workspace_goal_checkin_messages`)[0]
+            ?.goal_id,
+          "guide",
+        );
+        assert.deepEqual(
+          yield* sql<{
+            task_id: string;
+          }>`SELECT stamp.task_id FROM assistant_memory_job_runs stamp JOIN workspace_goal_checkin_messages goal ON goal.message_id=stamp.message_id`,
+          [{ task_id: task.id }],
+        );
+        yield* service.upsert({ ...legacyEdit, goalId: null });
+        yield* sql`DELETE FROM workspace_goals WHERE id = 'guide'`;
+        yield* service.runNow({ id: task.id });
+        assert.equal(yield* Ref.get(launches), 2);
+      }).pipe(
+        Effect.provide(
+          Layer.merge(ScheduledTaskService.layer, WorkspaceGoals.layer).pipe(
+            Layer.provide(dependencies),
+          ),
+        ),
+      );
+    }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
+);
 
 const isScheduledTaskError = Schema.is(ScheduledTaskError);
 
@@ -615,4 +731,116 @@ it.effect("a run interrupted right after it reserves the task does not block the
       assert.equal(yield* Ref.get(launches), 1);
     }).pipe(Effect.provide(layer));
   }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
+);
+
+it.effect(
+  "reads only attributed bot runs, keeps queued messages, and paginates shared conversations",
+  () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const now = "2026-11-03T20:00:00.000Z";
+      yield* insertRow(sql, { id: "bot:one", next: null, enabled: 0, status: "never" }, now);
+      for (const id of ["shared", "deleted"]) {
+        yield* sql`INSERT INTO orchestration_v2_projection_threads ${sql.insert({
+          thread_id: id,
+          project_id: "project:test",
+          title: `Conversation ${id}`,
+          default_provider: "codex",
+          runtime_mode: "full-access",
+          interaction_mode: "default",
+          created_at: now,
+          updated_at: now,
+          deleted_at: id === "deleted" ? now : null,
+          payload_json: "{}",
+        })}`;
+      }
+      for (const [id, threadId, scheduledTaskId, role] of [
+        ["a", "shared", "bot:one", "user"],
+        ["b", "shared", "bot:one", "user"],
+        ["c", "shared", "bot:one", "user"],
+        ["d", "shared", "bot:other", "user"],
+        ["e", "shared", null, "user"],
+        ["f", "shared", "bot:one", "assistant"],
+        ["g", "deleted", "bot:one", "user"],
+      ] as const) {
+        yield* sql`INSERT INTO orchestration_v2_projection_messages ${sql.insert({
+          message_id: id,
+          thread_id: threadId,
+          run_id: null,
+          node_id: null,
+          role,
+          streaming: 0,
+          created_at: now,
+          updated_at: now,
+          payload_json: JSON.stringify({ scheduledTaskId, text: "Same prompt, different source" }),
+        })}`;
+      }
+      for (const [id, messageId, ordinal, status] of [
+        ["run:a", "a", 1, "completed"],
+        ["run:b-old", "b", 2, "interrupted"],
+        ["run:b", "b", 3, "running"],
+        ["run:other", "d", 4, "completed"],
+      ] as const) {
+        yield* sql`INSERT INTO orchestration_v2_projection_runs ${sql.insert({
+          run_id: id,
+          thread_id: "shared",
+          ordinal,
+          provider: "codex",
+          status,
+          requested_at: now,
+          completed_at: status === "completed" ? now : null,
+          payload_json: JSON.stringify({ userMessageId: messageId }),
+        })}`;
+      }
+      const layer = ScheduledTaskService.layer.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            ManagedPolicy.layerTest(),
+            Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+            Layer.mock(ThreadManagementService.ThreadManagementService)({}),
+            Layer.mock(SecretRequests.SecretRequests)({}),
+            Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+              namedProjectsRoot: "/projects",
+              isScratchProject: () => Effect.succeed(false),
+            }),
+            NodeCrypto.layer,
+            Layer.succeed(Scheduler.Scheduler, { register: () => Effect.void }),
+          ),
+        ),
+      );
+      yield* Effect.gen(function* () {
+        const service = yield* ScheduledTaskService.ScheduledTaskService;
+        const first = yield* service.listRuns({ id: ScheduledTaskId.make("bot:one"), limit: 2 });
+        assert.deepEqual(
+          first.runs.map((entry) => [entry.messageId, entry.runId, entry.status]),
+          [
+            ["c", null, null],
+            ["b", "run:b", "running"],
+          ],
+        );
+        assert.equal(first.runs[1]?.threadTitle, "Conversation shared");
+        assert.isNotNull(first.nextCursor);
+        const second = yield* service.listRuns({
+          id: ScheduledTaskId.make("bot:one"),
+          limit: 2,
+          before: first.nextCursor!,
+        });
+        assert.deepEqual(
+          second.runs.map((entry) => entry.messageId),
+          ["a"],
+        );
+        assert.isNull(second.nextCursor);
+        const missing = yield* service
+          .listRuns({ id: ScheduledTaskId.make("missing") })
+          .pipe(Effect.flip);
+        assert.equal(missing._tag, "ScheduledTaskError");
+        const plan = yield* sql<{ detail: string }>`EXPLAIN QUERY PLAN SELECT message_id
+        FROM orchestration_v2_projection_messages WHERE role = 'user'
+          AND json_extract(payload_json, '$.scheduledTaskId') = 'bot:one'
+        ORDER BY created_at DESC, message_id DESC LIMIT 20`;
+        assert.isTrue(
+          plan.some((row) => row.detail.includes("idx_messages_scheduled_task_history")),
+        );
+      }).pipe(Effect.provide(layer));
+    }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
 );

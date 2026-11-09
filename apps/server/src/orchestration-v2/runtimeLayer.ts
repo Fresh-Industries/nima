@@ -1,3 +1,5 @@
+import * as PersonalAgent from "../personalAgent/PersonalAgent.ts";
+import * as BotStore from "../bots/BotStore.ts";
 import * as GuestShareService from "../guest/GuestShareService.ts";
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
@@ -162,6 +164,8 @@ const layerRunExecutionServiceProvided = RunExecutionService.layer.pipe(
 );
 
 const layerProviderTurnStartServiceProvided = ProviderTurnStartService.layer.pipe(
+  Layer.provide(BotStore.layer),
+  Layer.provide(PersonalAgent.layer),
   Layer.provide(
     Layer.mergeAll(
       layerContextHandoffServiceProvided,
@@ -248,6 +252,7 @@ const layerAgentSessionImporterProvided = AgentSessionImporter.layer.pipe(
 );
 
 const layerThreadManagementProvided = ThreadManagementService.layerWithLegacyImporter.pipe(
+  Layer.provide(BotStore.layer),
   Layer.provide(
     Layer.mergeAll(
       layerOrchestratorProvided,

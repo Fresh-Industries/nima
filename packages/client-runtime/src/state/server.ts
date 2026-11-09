@@ -1319,9 +1319,167 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:scheduled-task:webhook-deliveries",
       tag: WS_METHODS.scheduledTasksListWebhookDeliveries,
     }),
+    scheduledTaskRuns: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:scheduled-task:runs",
+      tag: WS_METHODS.scheduledTasksListRuns,
+      refreshIntervalMs: 10_000,
+    }),
     scheduledTaskWebhookDelivery: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:server:scheduled-task:webhook-delivery",
       tag: WS_METHODS.scheduledTasksGetWebhookDelivery,
+    }),
+    workspaceGoalsLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:workspace-goals:live",
+      tag: WS_METHODS.workspaceGoalsSubscribe,
+    }),
+    workspaceReviewLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:workspace-review:live",
+      tag: WS_METHODS.workspaceReviewSubscribe,
+    }),
+    createWorkSession: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:work:create",
+      tag: WS_METHODS.workspaceWorkCreate,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) => `${environmentId}:${input.threadId}`,
+      },
+    }),
+    writeWorkspaceReview: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:workspace-review:write",
+      tag: WS_METHODS.workspaceReviewWrite,
+      concurrency: { mode: "serial", key: ({ environmentId }) => environmentId },
+    }),
+    workspaceGoalHistory: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:workspace-goals:history",
+      tag: WS_METHODS.workspaceGoalsHistory,
+      staleTimeMs: 0,
+    }),
+    writeWorkspaceGoal: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:workspace-goals:write",
+      tag: WS_METHODS.workspaceGoalsWrite,
+      concurrency: {
+        mode: "serial",
+        key: ({ environmentId, input }) => `${environmentId}:${input.id}`,
+      },
+    }),
+    addWorkspaceGoalProgress: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:workspace-goals:progress",
+      tag: WS_METHODS.workspaceGoalsProgress,
+      concurrency: {
+        mode: "serial",
+        key: ({ environmentId, input }) => `${environmentId}:${input.id}`,
+      },
+    }),
+    projectTeamsLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:project-teams",
+      tag: WS_METHODS.projectTeamsSubscribe,
+    }),
+    writeProjectTeam: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:project-teams:write",
+      tag: WS_METHODS.projectTeamsWrite,
+      concurrency: {
+        mode: "serial",
+        key: ({ environmentId, input }) => `${environmentId}:${input.projectId}`,
+      },
+    }),
+    botsLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:bots",
+      tag: WS_METHODS.botsSubscribe,
+    }),
+    createBot: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:bots:create",
+      tag: WS_METHODS.botsCreate,
+      concurrency: { mode: "serial", key: ({ environmentId }) => environmentId },
+    }),
+    writeBot: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:bots:write",
+      tag: WS_METHODS.botsWrite,
+      concurrency: {
+        mode: "serial",
+        key: ({ environmentId, input }) => `${environmentId}:${input.id}`,
+      },
+    }),
+    resolveBotApproval: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:bots:resolve-approval",
+      tag: WS_METHODS.botsResolveApproval,
+      concurrency: {
+        mode: "serial",
+        key: ({ environmentId, input }) => `${environmentId}:${input.id}`,
+      },
+    }),
+    openBot: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:bots:open",
+      tag: WS_METHODS.botsOpen,
+      concurrency: {
+        mode: "singleFlight",
+        key: ({ environmentId, input }) => `${environmentId}:${input.id}`,
+      },
+    }),
+    personalAgentLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:personal-agent",
+      tag: WS_METHODS.personalAgentSubscribe,
+    }),
+    personalMemoriesLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:personal-memories",
+      tag: WS_METHODS.personalAgentMemorySubscribe,
+    }),
+    writePersonalAgent: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:personal-agent:write",
+      tag: WS_METHODS.personalAgentWrite,
+      concurrency: { mode: "serial", key: ({ environmentId }) => environmentId },
+    }),
+    openPersonalAgent: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:personal-agent:open",
+      tag: WS_METHODS.personalAgentOpen,
+      concurrency: { mode: "singleFlight", key: ({ environmentId }) => environmentId },
+    }),
+    rememberPersonalFact: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:personal-memory:write",
+      tag: WS_METHODS.personalAgentRemember,
+      concurrency: { mode: "serial", key: ({ environmentId }) => environmentId },
+    }),
+    studioLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:studio:live",
+      tag: WS_METHODS.studioSubscribe,
+    }),
+    mutateStudio: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:studio:mutate",
+      tag: WS_METHODS.studioMutate,
+      concurrency: { mode: "serial", key: ({ environmentId }) => environmentId },
+    }),
+    exportStudio: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:studio:export",
+      tag: WS_METHODS.studioExport,
+      concurrency: { mode: "serial", key: ({ environmentId }) => environmentId },
+    }),
+    workspacePagesLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:workspace-pages:live",
+      tag: WS_METHODS.workspacePagesSubscribe,
+    }),
+    writeWorkspacePage: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:workspace-pages:write",
+      tag: WS_METHODS.workspacePagesWrite,
+      concurrency: {
+        mode: "serial",
+        key: ({ environmentId, input }) => JSON.stringify([environmentId, input.id]),
+      },
+    }),
+    captureWorkspacePage: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:workspace-pages:capture",
+      tag: WS_METHODS.workspacePagesCapture,
+      concurrency: {
+        mode: "serial",
+        key: ({ environmentId, input }) => JSON.stringify([environmentId, input.id]),
+      },
+    }),
+    workspaceNotesLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:workspace-notes:live",
+      tag: WS_METHODS.workspaceNotesSubscribe,
+    }),
+    writeWorkspaceNote: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:workspace-notes:write",
+      tag: WS_METHODS.workspaceNotesWrite,
+      concurrency: { mode: "serial", key: ({ environmentId }) => environmentId },
     }),
     scheduledTasksLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
       label: "environment-data:server:scheduled-tasks:live",

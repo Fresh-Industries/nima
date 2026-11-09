@@ -1,3 +1,4 @@
+import * as PersonalAgent from "../../personalAgent/PersonalAgent.ts";
 import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
 import { DEFAULT_SIGNAL_EXPORT } from "@t3tools/shared/observability";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
@@ -414,6 +415,7 @@ export function layerWithRegistry<Error>(
     ),
   );
   const layerProviderTurnStartServiceProvided = ProviderTurnStartService.layer.pipe(
+    Layer.provide(PersonalAgent.layer.pipe(Layer.provide(layerDatabase))),
     Layer.provide(
       Layer.mergeAll(
         layerContextHandoffServiceProvided,

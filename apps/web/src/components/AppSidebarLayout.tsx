@@ -39,11 +39,9 @@ import {
 } from "../panelAnimations";
 import { BackgroundThreadAnnouncer } from "./BackgroundThreadAnnouncer";
 import { HistorySwipeNavigation } from "./HistorySwipeNavigation";
-import ThreadSidebar from "./Sidebar";
-import { NimaSidebar } from "../nima/Workspace";
+import { BaraSidebar } from "../nima/Shell";
 import { SidebarBrandWidthProbe } from "./sidebar/SidebarChrome";
 import { isAppModalPage } from "./sidebar/mainAppLocation";
-import type { SidebarRouteReveal } from "./sidebar/routeReveal";
 import { useSidebarStageBackdropVariant } from "./SidebarStageBackdrop";
 import {
   clampThreadSidebarWidth,
@@ -377,7 +375,7 @@ function SidebarControl() {
       ref={appShellCommandsRef}
       className={cn(
         "pointer-events-none fixed left-[var(--workspace-controls-left)] top-[var(--workspace-controls-top)] z-50 ml-px flex h-[var(--workspace-topbar-height)] items-center",
-        isMobile && mobileSheetMounted && "hidden",
+        (isSidebarVisible || (isMobile && mobileSheetMounted)) && "hidden",
       )}
       data-sidebar-control=""
     >
@@ -404,10 +402,6 @@ function SidebarControl() {
 
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const sidebarArea = workspaceAreaProps("sidebar", 0, "Threads");
-  const [sidebarRouteReveal] = useState<SidebarRouteReveal>(() => ({
-    observedKey: null,
-    pendingKey: null,
-  }));
   const { active: panelAnimationsActive, durationMs: panelAnimationDurationMs } =
     usePanelAnimationSettings();
   const pathname = useLocation({ select: (location) => location.pathname });
@@ -470,7 +464,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           }}
           style={windowControlsInsetStyle}
         >
-          <NimaSidebar advanced={<ThreadSidebar routeReveal={sidebarRouteReveal} />} />
+          <BaraSidebar />
           <SidebarRail onDoubleClick={resetSidebarWidth} />
         </Sidebar>
         {children}

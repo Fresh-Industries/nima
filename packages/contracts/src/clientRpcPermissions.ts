@@ -2,6 +2,8 @@ import * as Schema from "effect/Schema";
 import { GitPreparePullRequestThreadInput, GitRunStackedActionInput } from "./git.ts";
 import {
   AuthAccessWriteScope,
+  AuthFilesystemWriteScope,
+  AuthFilesystemReadScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   AuthPreviewOperateScope,
@@ -15,6 +17,21 @@ import { WS_METHODS } from "./rpc.ts";
 
 /** Incremental client enforcement; the server still authorizes every request. */
 export const CLIENT_GUARDED_RPC_SCOPES = {
+  [WS_METHODS.projectTeamsWrite]: AuthSettingsWriteScope,
+  [WS_METHODS.botsCreate]: AuthSettingsWriteScope,
+  [WS_METHODS.botsWrite]: AuthSettingsWriteScope,
+  [WS_METHODS.botsResolveApproval]: AuthSettingsWriteScope,
+  [WS_METHODS.botsOpen]: AuthOrchestrationOperateScope,
+  [WS_METHODS.personalAgentWrite]: AuthSettingsWriteScope,
+  [WS_METHODS.personalAgentRemember]: AuthSettingsWriteScope,
+  [WS_METHODS.personalAgentOpen]: AuthOrchestrationOperateScope,
+  [WS_METHODS.studioMutate]: AuthFilesystemWriteScope,
+  [WS_METHODS.studioExport]: AuthFilesystemWriteScope,
+  [WS_METHODS.workspaceGoalsWrite]: AuthFilesystemWriteScope,
+  [WS_METHODS.workspaceGoalsProgress]: AuthFilesystemWriteScope,
+  [WS_METHODS.workspaceNotesWrite]: AuthFilesystemWriteScope,
+  [WS_METHODS.workspacePagesWrite]: AuthFilesystemWriteScope,
+  [WS_METHODS.workspacePagesCapture]: AuthFilesystemWriteScope,
   [WS_METHODS.previewClose]: AuthPreviewOperateScope,
   // Stopping a server signals its processes, as closing a terminal does.
   [WS_METHODS.previewStopLocalServer]: AuthTerminalOperateScope,
@@ -55,6 +72,8 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   // Starts an agent session on this environment that can read its logs and database.
   [WS_METHODS.serverPrepareTriage]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksUpsert]: AuthOrchestrationOperateScope,
+  [WS_METHODS.workspaceWorkCreate]: AuthOrchestrationOperateScope,
+  [WS_METHODS.workspaceReviewWrite]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksSetEnabled]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksDelete]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksRunNow]: AuthOrchestrationOperateScope,
@@ -78,6 +97,12 @@ export function clientRpcRequiredScopes(
   method: string,
   input: unknown,
 ): readonly AuthEnvironmentScope[] {
+  if (method === WS_METHODS.personalAgentOpen)
+    return [AuthOrchestrationOperateScope, AuthSettingsWriteScope];
+  if (method === WS_METHODS.studioMutate || method === WS_METHODS.studioExport)
+    return [AuthFilesystemWriteScope, AuthFilesystemReadScope];
+  if (method === WS_METHODS.workspacePagesCapture)
+    return [AuthFilesystemWriteScope, AuthOrchestrationReadScope];
   if (method === WS_METHODS.gitPreparePullRequestThread && input !== undefined) {
     const payload = decodePrepareThread(input);
     if (payload.mode === "worktree" && payload.threadId !== undefined)

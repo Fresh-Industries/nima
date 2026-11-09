@@ -1,0 +1,143 @@
+.root {
+  width: 100%;
+  min-width: 0;
+  min-height: 180px;
+  height: 100%;
+}
+.root :global(.cm-editor) {
+  height: 100%;
+  background: transparent;
+  color: var(--nima-ink, var(--foreground));
+  font-size: 13px;
+}
+.root :global(.cm-scroller) {
+  overflow: auto;
+  font-family: inherit;
+  line-height: 1.85;
+}
+.root :global(.cm-content) {
+  min-height: 180px;
+  padding: 12px 4px 40px;
+  caret-color: var(--nima-accent, var(--primary));
+  overflow-wrap: anywhere;
+}
+.root :global(.cm-line) {
+  padding: 0 2px;
+}
+.root :global(.cm-focused),
+.root :global(.cm-content:focus-visible) {
+  outline: none;
+}
+.root:has(:global(.cm-focused)) {
+  outline: 2px solid var(--nima-accent, var(--ring));
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+.document :global(.cm-editor) {
+  font-size: 15px;
+}
+.document :global(.cm-content) {
+  padding: 8px 0 48px;
+}
+.document :global(.cm-line) {
+  padding-inline: 0;
+}
+.document:has(:global(.cm-focused)) {
+  outline: none;
+}
+.document:focus-within {
+  box-shadow: inset 2px 0 0 var(--nima-line, var(--border));
+}
+.root :global(.cm-cursor) {
+  border-left-color: var(--nima-ink, var(--foreground));
+}
+.root :global(.cm-placeholder),
+.root :global(.bara-md-syntax) {
+  color: var(--nima-muted, var(--muted-foreground));
+}
+.root :global(.bara-md-heading) {
+  font-weight: 550;
+  line-height: 1.5;
+  padding-block: 6px;
+  letter-spacing: -0.025em;
+}
+.root :global(.bara-md-heading-1) {
+  font-size: 26px;
+}
+.root :global(.bara-md-heading-2) {
+  font-size: 21px;
+}
+.root :global(.bara-md-heading-3) {
+  font-size: 17px;
+}
+.root :global(.bara-md-heading-4),
+.root :global(.bara-md-heading-5),
+.root :global(.bara-md-heading-6) {
+  font-size: 14px;
+}
+.root :global(.bara-md-strong) {
+  font-weight: 650;
+}
+.root :global(.bara-md-emphasis) {
+  font-style: italic;
+}
+.root :global(.bara-md-strike) {
+  text-decoration: line-through;
+  color: var(--nima-muted, var(--muted-foreground));
+}
+.root :global(.bara-md-inline-code) {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.92em;
+  background: var(--nima-side, var(--muted));
+  border-radius: 4px;
+  padding-block: 2px;
+}
+.root :global(.bara-md-link) {
+  color: var(--nima-accent, var(--primary));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: text;
+}
+.root :global(.bara-md-bullet) {
+  display: inline-block;
+  width: 1em;
+  color: var(--nima-muted, var(--muted-foreground));
+}
+.root :global(.bara-md-task) {
+  margin-right: 4px;
+  vertical-align: middle;
+  accent-color: var(--nima-accent, var(--primary));
+}
+.root :global(.bara-md-quote) {
+  border-left: 2px solid var(--nima-accent, var(--primary));
+  padding-left: 12px;
+  color: var(--nima-sub, var(--muted-foreground));
+}
+.root :global(.bara-md-code-line) {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  background: var(--nima-side, var(--muted));
+  padding-inline: 10px;
+}
+.root :global(.bara-md-table) {
+  overflow-x: auto;
+  padding-block: 12px;
+}
+.root :global(.bara-md-table table) {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.root :global(.bara-md-table th),
+.root :global(.bara-md-table td) {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--nima-line, var(--border));
+}
+.root :global(.bara-md-table th) {
+  font-weight: 550;
+}
+.root :global(.bara-md-rule) {
+  margin-block: 18px;
+  border: 0;
+  border-top: 1px solid var(--nima-line, var(--border));
+}

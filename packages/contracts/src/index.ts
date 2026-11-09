@@ -1,4 +1,5 @@
 export * from "./baseSchemas.ts";
+export * from "./studio.ts";
 export * from "./assistantCitations.ts";
 export * from "./composerContext.ts";
 export * from "./composerContextClipboard.ts";
@@ -64,6 +65,7 @@ export * from "./previewAutomation.ts";
 export * from "./previewCapture.ts";
 export * from "./usage.ts";
 export * from "./scheduledTask.ts";
+export * from "./workspaceReview.ts";
 export * from "./worktreeMcp.ts";
 export * from "./resourceTelemetry.ts";
 export * from "./rpc.ts";
@@ -72,3 +74,15 @@ export * from "./secretRequest.ts";
 export * from "./secretReference.ts";
 export * from "./settingsSecretValue.ts";
 export * from "./clientRpcPermissions.ts";
+
+export * from "./workspaceNotes.ts";
+export * from "./workspaceGoals.ts";
+
+export * from "./workspacePages.ts";
+
+export * from "./personalAgent.ts";
+
+export * from "./bots.ts";
+export * from "./projectTeams.ts";
+
+export * from "./workSessions.ts";

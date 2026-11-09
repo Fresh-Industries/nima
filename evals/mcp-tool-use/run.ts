@@ -1,4 +1,11 @@
 #!/usr/bin/env node
+import { BotsToolkit } from "../../apps/server/src/mcp/toolkits/bots/tools.ts";
+import { PagesToolkit } from "../../apps/server/src/mcp/toolkits/pages/tools.ts";
+import { StudioToolkit } from "../../apps/server/src/mcp/toolkits/studio/tools.ts";
+import { MemoryToolkit } from "../../apps/server/src/mcp/toolkits/memory/tools.ts";
+import { PERSONAL_ASSISTANT_WORK_INSTRUCTIONS } from "../../apps/server/src/personalAgent/assistantInstructions.ts";
+import { GoalsToolkit } from "../../apps/server/src/mcp/toolkits/goals/tools.ts";
+import { NotesToolkit } from "../../apps/server/src/mcp/toolkits/notes/tools.ts";
 // @effect-diagnostics nodeBuiltinImport:off
 /**
  * Replays small fake threads on a Claude or Codex model to check T3's MCP tool use. A trimmed
@@ -244,6 +251,7 @@ export const McpToolUseCase = Schema.Struct({
   privacy: Schema.optional(Schema.Literals(["commit-safe", "private"])),
   setup: Schema.Struct({
     role: Schema.Literals(["top", "delegated-child", "native-subagent"]),
+    personalAssistant: Schema.optional(Schema.Boolean),
     /** Runs only on this harness, for cases whose right answer depends on it. */
     harness: Schema.optional(Schema.Literals(["claude", "codex"])),
     /** The Linked environments beta is on, so T3 lists its link tools. */
@@ -381,6 +389,12 @@ export const normalizeToolInput = (name: string, input: unknown) => {
 // McpHttpServer advertises each tool's JSON schema, and Claude Code passes the MCP name,
 // description, and schema through unchanged.
 const t3SourceTools: ReadonlyArray<Tool.Any> = [
+  GoalsToolkit,
+  PagesToolkit,
+  StudioToolkit,
+  BotsToolkit,
+  MemoryToolkit,
+  NotesToolkit,
   OrchestratorToolkit,
   ThreadToolkit,
   AttachmentToolkit,
@@ -882,6 +896,7 @@ export const buildMessages = (sample: Sample) => {
   const { role, context, delegateRole, priorTurns = [] } = testCase.setup;
   const native = role === "native-subagent";
   const notes = [
+    testCase.setup.personalAssistant ? PERSONAL_ASSISTANT_WORK_INSTRUCTIONS : undefined,
     native
       ? "You are a subagent started by the parent agent's Agent tool. Your final message goes to the parent agent, not to the user."
       : undefined,

@@ -9,7 +9,11 @@ import {
 
 describe("compactDynamicToolOutput", () => {
   it("extracts IDs through the MCP result envelopes used by T3 summaries", () => {
-    const metadata = { threadId: "thread-1", messageId: "message-1" };
+    const metadata = {
+      threadId: "thread-1",
+      messageId: "message-1",
+      current_revision: 8,
+    };
     const json = JSON.stringify({ ...metadata, response: "Private response body" });
     for (const value of [
       { ...metadata, response: "Private response body" },
@@ -59,6 +63,10 @@ describe("compactDynamicToolOutput", () => {
     }
     expect(compactDynamicToolOutput("Private plain text")).toBeUndefined();
     expect(compactDynamicToolOutput({ result: { body: "Private result" } })).toBeUndefined();
+    for (const revision of [-1, 0.5, "8", null, Number.MAX_SAFE_INTEGER + 1])
+      expect(
+        compactDynamicToolOutput({ current_revision: revision, request_id: "not-proof" }),
+      ).toBeUndefined();
   });
 
   it("uses the first result data but combines explicit failure flags across content blocks", () => {

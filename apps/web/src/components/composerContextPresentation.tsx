@@ -3,6 +3,7 @@ import { isSvgAttachment } from "@t3tools/shared/image";
 import { ReadOnlySourcePreview } from "./files/AttachmentFilePreview";
 import type {
   EnvironmentContextRecord,
+  ProjectContextRecord,
   PreviewAnnotationPayload,
   ThreadContextRecord,
 } from "@t3tools/contracts";
@@ -38,6 +39,7 @@ import type { ReviewCommentContext } from "~/reviewCommentContext";
 import { ComposerPendingTerminalContextChip } from "./chat/ComposerPendingTerminalContexts";
 import { EnvironmentContextChip } from "./EnvironmentContextChip";
 import { ThreadContextChip } from "./ThreadContextChip";
+import { ProjectContextChip } from "./ProjectContextChip";
 import { useLinkedEnvironments } from "~/state/peerLinks";
 import {
   createContextPresentationRegistry,
@@ -66,7 +68,8 @@ export type ComposerDraftContextRecord =
   | { kind: "image"; record: ComposerImageAttachment; upload?: AttachmentUploadState | undefined }
   | { kind: "file"; record: ComposerFileAttachment; upload?: AttachmentUploadState | undefined }
   | { kind: "thread"; record: ThreadContextRecord }
-  | { kind: "environment"; record: EnvironmentContextRecord };
+  | { kind: "environment"; record: EnvironmentContextRecord }
+  | { kind: "project"; record: ProjectContextRecord };
 
 export interface ComposerContextActions {
   environmentId: EnvironmentId | null;
@@ -106,6 +109,7 @@ export function composerContextRecordsFromDraft(input: {
   previewAnnotations?: ReadonlyArray<PreviewAnnotationPayload>;
   threadContexts?: ReadonlyArray<ThreadContextRecord>;
   environmentContexts?: ReadonlyArray<EnvironmentContextRecord>;
+  projectContexts?: ReadonlyArray<ProjectContextRecord>;
   images?: ReadonlyArray<ComposerImageAttachment>;
   files?: ReadonlyArray<ComposerFileAttachment>;
   uploadsByImageId?: Readonly<Record<string, AttachmentUploadState>>;
@@ -145,6 +149,8 @@ export function composerContextRecordsFromDraft(input: {
   for (const record of input.environmentContexts ?? []) {
     records.set(record.contextId, { kind: "environment", record });
   }
+  for (const record of input.projectContexts ?? [])
+    records.set(record.contextId, { kind: "project", record });
   return records;
 }
 
@@ -487,6 +493,16 @@ const composerContextPresentationRegistry = createContextPresentationRegistry<
       render: (entry, context) =>
         entry.kind === "environment" ? (
           <EnvironmentContextChip record={entry.record} />
+        ) : (
+          <UnresolvedContextChip label={context.label} />
+        ),
+    },
+    {
+      kind: "project",
+      canRender: (entry) => entry.kind === "project",
+      render: (entry, context) =>
+        entry.kind === "project" ? (
+          <ProjectContextChip record={entry.record} />
         ) : (
           <UnresolvedContextChip label={context.label} />
         ),

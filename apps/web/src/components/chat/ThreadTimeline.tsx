@@ -10,6 +10,7 @@ import {
   timelineHasEphemeralPreviewUrls,
 } from "../ChatView.logic";
 import { MessagesTimeline } from "./MessagesTimeline";
+import { dailyTimeline } from "../../nima/dailyHistory";
 
 /**
  * The timeline with the streamed text. ChatView reads the thread through its quiet
@@ -24,6 +25,8 @@ export function ThreadTimeline({
   activeThreadKey,
   syncing,
   detailLoading,
+  dayCutoff,
+  timezone,
   ...timelineProps
 }: Omit<ComponentProps<typeof MessagesTimeline>, "timelineEntries"> & {
   /** Null until the thread's detail may load; see resolveThreadDetailRef. */
@@ -34,6 +37,8 @@ export function ThreadTimeline({
   activeThreadKey: string | null;
   syncing: boolean;
   detailLoading: boolean;
+  dayCutoff?: string | null;
+  timezone?: string;
 }) {
   const visibleTurnItems = useTimelineVisibleTurnItems(threadDetailRef);
   const serverEntries = useIncrementalTimelineEntries(activeThreadKey, {
@@ -54,5 +59,9 @@ export function ThreadTimeline({
     }
     rememberReadyThreadTimeline({ threadKey: activeThreadKey, entries });
   }, [activeThreadKey, detailLoading, entries]);
-  return <MessagesTimeline {...timelineProps} timelineEntries={displayedEntries} />;
+  const visible =
+    dayCutoff && timezone
+      ? dailyTimeline(displayedEntries, dayCutoff, timezone).entries
+      : displayedEntries;
+  return <MessagesTimeline {...timelineProps} timelineEntries={visible} />;
 }

@@ -1,4 +1,6 @@
 import { WorkLogBlock } from "./WorkLog";
+import { usePersonalChat } from "../../nima/useDailyConversation";
+import { AssistantWorkCard } from "../../nima/AssistantWorkCard";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { useAtomValue } from "@effect/atom-react";
 import { environmentThreadDetails } from "../../state/threads";
@@ -19,6 +21,57 @@ import { subagentGroupTiming } from "./TimelineV2EventRow.logic";
 export function V2EventTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "event" }> }) {
   const ctx = use(TimelineRowCtx);
   const { item, visibility } = row.projectedItem;
+  const personal = usePersonalChat();
+  if (personal && item.type === "subagent" && item.origin === "app_owned")
+    return (
+      <div>
+        {(row.subagents ?? [row.projectedItem]).map(({ item }) =>
+          item.type === "subagent" && item.origin === "app_owned" ? (
+            <AssistantWorkCard
+              key={item.subagentId}
+              itemId={item.id}
+              parentRef={scopeThreadRef(ctx.activeThreadEnvironmentId, item.threadId)}
+              taskId={item.subagentId}
+              title={item.title}
+              fallback={
+                <V2LifecycleRow
+                  environmentId={ctx.activeThreadEnvironmentId}
+                  item={item}
+                  runs={ctx.runs}
+                  onOpenThread={ctx.onOpenThread}
+                />
+              }
+            />
+          ) : (
+            <V2LifecycleRow
+              key={item.id}
+              environmentId={ctx.activeThreadEnvironmentId}
+              item={item}
+              runs={ctx.runs}
+              onOpenThread={ctx.onOpenThread}
+            />
+          ),
+        )}
+      </div>
+    );
+  if (personal && item.type === "thread_created")
+    return (
+      <AssistantWorkCard
+        itemId={item.id}
+        parentRef={scopeThreadRef(ctx.activeThreadEnvironmentId, item.threadId)}
+        threadId={item.targetThreadId}
+        title={item.title}
+        fallback={
+          <V2LifecycleRow
+            environmentId={ctx.activeThreadEnvironmentId}
+            item={item}
+            resourceSummary={row.resourceSummary}
+            runs={ctx.runs}
+            onOpenThread={ctx.onOpenThread}
+          />
+        }
+      />
+    );
   if (item.type === "subagent" && (row.subagents?.length ?? 1) > 1) {
     return <V2SubagentGroup key={row.id} row={row} />;
   }

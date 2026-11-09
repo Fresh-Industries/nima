@@ -496,7 +496,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     }),
   );
 
-  it.effect("omits update feeds for pull request preview builds", () =>
+  it.effect("never infers Bara updates from an upstream checkout", () =>
     Effect.gen(function* () {
       const preview = yield* createBuildConfig(
         "mac",
@@ -530,17 +530,44 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       assert.isNull(preview.publish);
       assert.isNull(previewChannel.publish);
       assert.deepStrictEqual(release.publish, [
-        {
-          provider: "github",
-          owner: "pingdotgg",
-          repo: "t3code",
-          releaseType: "release",
-        },
+        { provider: "github", owner: "Fresh-Industries", repo: "nima", releaseType: "release" },
       ]);
+      assert.equal(release.appId, "com.freshindustries.bara");
+      assert.equal(release.productName, "Bara");
     }).pipe(
       Effect.provide(
         ConfigProvider.layer(
           ConfigProvider.fromEnv({ env: { GITHUB_REPOSITORY: "pingdotgg/t3code" } }),
+        ),
+      ),
+    ),
+  );
+
+  it.effect("keeps mock update builds on their explicit local feed", () =>
+    Effect.gen(function* () {
+      const config = yield* createBuildConfig("win", "nsis", "0.1.7", false, true, 3344, undefined);
+      assert.deepStrictEqual(config.publish, [
+        { provider: "generic", url: "http://localhost:3344" },
+      ]);
+    }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
+  );
+
+  it.effect("refuses an upstream T3 update feed override", () =>
+    Effect.gen(function* () {
+      const config = yield* createBuildConfig(
+        "win",
+        "nsis",
+        "0.1.7",
+        false,
+        false,
+        undefined,
+        undefined,
+      );
+      assert.isNull(config.publish);
+    }).pipe(
+      Effect.provide(
+        ConfigProvider.layer(
+          ConfigProvider.fromEnv({ env: { BARA_DESKTOP_UPDATE_REPOSITORY: "pingdotgg/t3code" } }),
         ),
       ),
     ),
@@ -1393,7 +1420,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     });
 
     assert.deepStrictEqual(configuration, {
-      appId: "com.t3tools.t3code",
+      appId: "com.freshindustries.bara",
       teamId: "ABC1234567",
       rpDomains: ["example.clerk.accounts.dev"],
       provisioningProfilePath: "/tmp/t3code.provisionprofile",
@@ -1416,7 +1443,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       "clerk.example.com",
       "example.clerk.accounts.dev",
     ]);
-    assert.include(entitlements, "<string>ABC1234567.com.t3tools.t3code</string>");
+    assert.include(entitlements, "<string>ABC1234567.com.freshindustries.bara</string>");
     assert.include(entitlements, "<string>webcredentials:clerk.example.com</string>");
     assert.include(entitlements, "<string>webcredentials:example.clerk.accounts.dev</string>");
     assert.include(entitlements, "<key>com.apple.security.cs.allow-jit</key>");

@@ -7,7 +7,7 @@ export function isAppModalPage(pathname: string) {
   return pathname === "/settings" || pathname.startsWith("/settings/") || pathname === "/usage";
 }
 
-export function isSidebarUtilityPage(pathname: string) {
+function isSidebarUtilityPage(pathname: string) {
   return pathname.startsWith("/projects/") || pathname === "/pull-requests";
 }
 
@@ -29,11 +29,6 @@ export function startMainAppLocationTracking(router: AnyRouter): () => void {
   };
   record();
   return router.subscribe("onResolved", record);
-}
-
-export function useNavigateToMainApp() {
-  const navigate = useNavigate();
-  return () => navigate({ href: mainAppHref ?? "/" });
 }
 
 /** Leaves Settings or Usage for the page that opened it. */

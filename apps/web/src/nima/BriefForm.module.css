@@ -1,0 +1,145 @@
+.name {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 4px 0;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.name:hover {
+  border-bottom-color: var(--border);
+}
+.name:focus-visible {
+  outline: none;
+  border-bottom-color: var(--ring);
+}
+.brief {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  border: 0;
+  border-radius: 4px;
+  padding: 8px 0;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.6;
+}
+.brief::placeholder,
+.name::placeholder {
+  color: var(--muted-foreground);
+}
+.brief:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: 4px;
+}
+.templates,
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+.templates > button,
+.options > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.templates > button {
+  border: 1px solid var(--border);
+}
+.templates > button:hover,
+.options > button:hover {
+  color: var(--foreground);
+  background: var(--accent);
+}
+.templates > button:focus-visible,
+.options > button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.quickEntry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.quickEntry:focus-within {
+  border-color: var(--ring);
+}
+.quickEntry input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 0;
+  border: 0;
+  font: inherit;
+  outline: none;
+}
+.quickEntry button {
+  padding: 4px;
+  border-radius: 4px;
+}
+.schedule > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  list-style: none;
+}
+.schedule > summary::-webkit-details-marker {
+  display: none;
+}
+.schedule > summary:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.schedule[open] > summary {
+  margin-bottom: 16px;
+}
+.schedule > summary svg:last-child {
+  margin-left: 8px;
+}
+@media (max-width: 640px) {
+  .brief {
+    min-height: 104px;
+  }
+}
+
+.metadata {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.owner {
+  min-width: 0;
+  width: fit-content;
+  max-width: 160px;
+}
+.metadata .schedule[open] {
+  width: 100%;
+  order: 1;
+}

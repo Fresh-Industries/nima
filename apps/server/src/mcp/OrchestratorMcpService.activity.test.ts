@@ -1,3 +1,4 @@
+import * as BotDelegation from "../bots/BotDelegation.ts";
 import {
   EnvironmentId,
   NodeId,
@@ -33,6 +34,13 @@ import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
 import { liveThreadShell } from "./McpToolAccess.testkit.ts";
 
 const layerOrchestratorService = OrchestratorMcpService.layer.pipe(
+  Layer.provide(
+    Layer.succeed(BotDelegation.BotDelegation, {
+      reserve: () => Effect.succeed(null),
+      reconcile: () => Effect.void,
+      assertLocal: () => Effect.void,
+    }),
+  ),
   Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
   Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
 );

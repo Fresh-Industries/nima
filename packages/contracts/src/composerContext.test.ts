@@ -118,6 +118,14 @@ const knownRecords: Record<(typeof COMPOSER_CONTEXT_KINDS)[number], Record<strin
     label: "vps",
     environmentId: "environment-vps",
   },
+  project: {
+    ...base,
+    kind: "project",
+    label: "@InflateMate",
+    title: "InflateMate",
+    environmentId: "environment-vps",
+    projectId: "project-inflatemate",
+  },
 };
 
 describe("ComposerContextRecord", () => {

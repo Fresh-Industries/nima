@@ -1349,6 +1349,15 @@ export function settingsForThisPlatform(
   const platform = typeof navigator === "undefined" ? "" : navigator.platform;
   return items.filter(
     (item) =>
+      ![
+        "boring-sidebar",
+        "boring-sidebar-multiline",
+        "legacy-plan-mode",
+        "legacy-context-window-indicator",
+        "cli-command",
+        "mobile-app",
+        "update-track",
+      ].includes(item.id) &&
       (isElectron || item.desktopOnly !== true) &&
       (!item.releaseChannelOnly || isElectron || HOSTED_APP_CHANNEL !== null) &&
       (!item.secretsFeatureOnly || isSecretsFeatureEnabled) &&

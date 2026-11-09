@@ -31,6 +31,23 @@ const input = {
 const callbackUrl = `http://127.0.0.1:54213/auth/callback?state=${"a".repeat(43)}&code=one-time-code&client_id=oaiapp_test`;
 
 describe("Codex desktop handoff", () => {
+  it.each([false, true])(
+    "returns Codex sign-in to the Bara desktop (development: %s)",
+    (development) => {
+      const scheme = development ? "bara-dev" : "bara";
+      const request = {
+        ...input,
+        returnUrl: `${scheme}://app/settings/providers?instanceId=work-codex`,
+      };
+      const link = codexAuthHandoffUrl(request, development);
+      expect(new URL(link).protocol).toBe(`${scheme}:`);
+      expect(readCodexAuthHandoff(link, development)).toEqual(request);
+      expect(readCodexAuthHandoff(link, !development)).toBeUndefined();
+      const delivered = codexAuthDeliveryUrl(request, callbackUrl);
+      expect(readCodexAuthDelivery(delivered)?.returnUrl).toBe(request.returnUrl);
+      expect(new URL(delivered).searchParams.has("code")).toBe(false);
+    },
+  );
   it("keeps the hosted return route, account, and environment with the code in a fragment", () => {
     expect(readCodexAuthHandoff(codexAuthHandoffUrl(input), false)).toEqual(input);
     const delivery = codexAuthDeliveryUrl(input, callbackUrl);

@@ -24,9 +24,25 @@ describe("scheduled task schedule calculation", () => {
     expect(parts?.weekDay).toBe(1);
     expect(parts?.hour).toBe(9);
     expect(parts?.minute).toBe(0);
+    for (const [from, expected] of [
+      ["2026-10-31T15:00:00.000Z", "2026-11-01T15:00:00.000Z"],
+      ["2026-03-07T16:00:00.000Z", "2026-03-08T14:00:00.000Z"],
+    ]) {
+      const local = nextScheduledRunAt(
+        { type: "fixed_time", timeOfDay: "09:00", weekdays: [0], timeZone: "America/Chicago" },
+        DateTime.makeUnsafe(from!),
+      );
+      expect(local && DateTime.formatIso(DateTime.toUtc(local))).toBe(expected);
+    }
   });
 
   it("compares schedules structurally", () => {
+    expect(
+      isSameSchedule(
+        { type: "fixed_time", timeOfDay: "09:00", timeZone: "America/Chicago" },
+        { type: "fixed_time", timeOfDay: "09:00", timeZone: "America/New_York" },
+      ),
+    ).toBe(false);
     expect(
       isSameSchedule(
         { type: "once", runAt: "2026-11-01T03:00:00-05:00" },

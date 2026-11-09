@@ -330,7 +330,7 @@ function AutomationMessageRow({ row }: { row: Extract<TimelineRow, { kind: "mess
           <div className="flex shrink-0 items-center gap-2">
             {scheduledTaskId ? (
               <Link
-                to="/settings/scheduled-tasks"
+                to="/bots"
                 search={{ environmentId: ctx.activeThreadEnvironmentId, taskId: scheduledTaskId }}
                 className="rounded-sm text-xs text-muted-foreground hover:underline focus-visible:outline-2 focus-visible:outline-ring"
               >
@@ -854,6 +854,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
         </div>
       ) : null}
       <div
+        data-user-message-bubble="true"
         className={cn(
           "relative min-w-0 max-w-[80%] rounded-2xl text-message-foreground",
           (mediaAboveText || row.groupedWithPrevious) && "rounded-tr-md",

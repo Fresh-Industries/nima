@@ -1,3 +1,4 @@
+import * as BotDelegation from "../../bots/BotDelegation.ts";
 import * as DocumentText from "../../provider/DocumentText.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -62,6 +63,13 @@ import * as PeerLinkRequests from "../../peer/PeerLinkRequests.ts";
 import * as PeerLinks from "../../peer/PeerLinks.ts";
 
 const layerOrchestratorToolkit = McpHttpServer.layerOrchestratorToolkit.pipe(
+  Layer.provide(
+    Layer.succeed(BotDelegation.BotDelegation, {
+      reserve: () => Effect.succeed(null),
+      reconcile: () => Effect.void,
+      assertLocal: () => Effect.void,
+    }),
+  ),
   Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
   Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
 );
@@ -683,9 +691,14 @@ it.effect("a caller cannot rewrite a scheduled task that runs above its own mode
     expect(declaredFailure(remove)).toMatchObject({ code: "runtime_mode_escalation_denied" });
     const allowed = yield* call("schedule_task", {
       scheduledTaskId: "task-auto",
+      ownerBotId: "researcher",
       enabled: false,
     });
     expect(allowed.isError).toBe(false);
+    expect(allowed.structuredContent).toMatchObject({
+      ownerBotId: "researcher",
+      boundThreadId: null,
+    });
     const incomplete = yield* call("schedule_task", { prompt: "Run nightly" });
     expect(declaredFailure(incomplete)).toMatchObject({ code: "invalid_request" });
   }).pipe(

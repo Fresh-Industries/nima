@@ -1,3 +1,5 @@
+import { personalReasoningOptions, type PersonalReasoning } from "../../nima/personalAgent";
+import { getProviderModelCapabilities } from "../../providerModels";
 import {
   type DraftId,
   deriveEffectiveComposerModelState,
@@ -28,6 +30,7 @@ const NO_PROVIDER_MODELS: ServerProvider["models"] = [];
  */
 export function useComposerProviderModel(
   input: Omit<Parameters<typeof resolveComposerProviderSelection>[0], "entries"> & {
+    readonly personalReasoning?: PersonalReasoning | undefined;
     readonly providerStatuses: ReadonlyArray<ServerProvider>;
     readonly settings: UnifiedSettings;
     readonly activeProjectId: ProjectId | null;
@@ -76,12 +79,27 @@ export function useComposerProviderModel(
     settings,
   });
   const selectedProviderModels = selection.selectedProviderEntry?.models ?? NO_PROVIDER_MODELS;
+  const options = input.personalReasoning
+    ? personalReasoningOptions(
+        getProviderModelCapabilities(
+          selectedProviderModels,
+          modelState.selectedModel,
+          selectedProvider,
+          settings.planModeEnabled,
+        ),
+        modelState.modelOptions?.[selectedInstanceId],
+        input.personalReasoning,
+      )
+    : modelState.modelOptions?.[selectedInstanceId];
+  const composerModelOptions = input.personalReasoning
+    ? { ...modelState.modelOptions, [selectedInstanceId]: options }
+    : modelState.modelOptions;
   const composerProviderState = getComposerProviderState({
     provider: selectedProvider,
     model: modelState.selectedModel,
     models: selectedProviderModels,
     promptInjectionState,
-    modelOptions: modelState.modelOptions?.[selectedInstanceId],
+    modelOptions: options,
     planModeEnabled: settings.planModeEnabled,
   });
   return {
@@ -90,7 +108,7 @@ export function useComposerProviderModel(
     selectedInstanceId,
     selectedProvider,
     selectedProviderModels,
-    composerModelOptions: modelState.modelOptions,
+    composerModelOptions,
     selectedModel: modelState.selectedModel,
     composerProviderState,
   };

@@ -2,6 +2,7 @@ import {
   AuthEnvironmentMaintainScope,
   AuthDiagnosticsReadScope,
   AuthFilesystemReadScope,
+  AuthFilesystemWriteScope,
   AuthProvidersManageScope,
   AuthSettingsWriteScope,
   DEFAULT_SERVER_SETTINGS,
@@ -9,6 +10,7 @@ import {
   ProviderInstanceId,
   SecretProviderId,
   ThreadId,
+  RunId,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   AuthSourceControlWriteScope,
@@ -33,6 +35,58 @@ import * as RpcAuthorization from "./RpcAuthorization.ts";
 describe("RPC authorization scopes", () => {
   it("declares exactly one scope for every RPC in the server group", () => {
     expect(new Set(Object.keys(RPC_REQUIRED_SCOPES))).toEqual(new Set(WsRpcGroup.requests.keys()));
+    for (const method of [
+      WS_METHODS.workspaceGoalsRead,
+      WS_METHODS.workspaceGoalsHistory,
+      WS_METHODS.workspaceGoalsSubscribe,
+    ])
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthFilesystemReadScope);
+    for (const method of [WS_METHODS.workspaceGoalsWrite, WS_METHODS.workspaceGoalsProgress])
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthFilesystemWriteScope);
+    for (const method of [
+      WS_METHODS.personalAgentMemories,
+      WS_METHODS.personalAgentMemorySubscribe,
+      WS_METHODS.personalAgentWrite,
+      WS_METHODS.projectTeamsWrite,
+      WS_METHODS.botsCreate,
+      WS_METHODS.botsWrite,
+      WS_METHODS.botsResolveApproval,
+      WS_METHODS.personalAgentRemember,
+    ])
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthSettingsWriteScope);
+    for (const method of [WS_METHODS.personalAgentRead, WS_METHODS.personalAgentSubscribe])
+      expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);
+    expect(requiredScopeForRpcMethod(WS_METHODS.botsSubscribe)).toBe(AuthOrchestrationReadScope);
+    expect(requiredScopeForRpcMethod(WS_METHODS.botsOpen)).toBe(AuthOrchestrationOperateScope);
+    expect(requiredScopeForRpcMethod(WS_METHODS.workspaceReviewSubscribe)).toBe(
+      AuthOrchestrationReadScope,
+    );
+    expect(requiredScopeForRpcMethod(WS_METHODS.workspaceWorkCreate)).toBe(
+      AuthOrchestrationOperateScope,
+    );
+    expect(requiredScopeForRpcMethod(WS_METHODS.workspaceReviewWrite)).toBe(
+      AuthOrchestrationOperateScope,
+    );
+    expect(requiredScopeForRpcMethod(WS_METHODS.scheduledTasksListRuns)).toBe(
+      AuthOrchestrationReadScope,
+    );
+    expect(requiredScopeForRpcMethod(WS_METHODS.workspacePagesRead)).toBe(AuthFilesystemReadScope);
+    expect(requiredScopeForRpcMethod(WS_METHODS.workspacePagesSubscribe)).toBe(
+      AuthFilesystemReadScope,
+    );
+    expect(requiredScopeForRpcMethod(WS_METHODS.workspacePagesWrite)).toBe(
+      AuthFilesystemWriteScope,
+    );
+    expect(requiredScopeForRpcMethod(WS_METHODS.workspacePagesCapture)).toBe(
+      AuthFilesystemWriteScope,
+    );
+    expect(requiredScopeForRpcMethod(WS_METHODS.workspaceNotesRead)).toBe(AuthFilesystemReadScope);
+    expect(requiredScopeForRpcMethod(WS_METHODS.workspaceNotesSubscribe)).toBe(
+      AuthFilesystemReadScope,
+    );
+    expect(requiredScopeForRpcMethod(WS_METHODS.workspaceNotesWrite)).toBe(
+      AuthFilesystemWriteScope,
+    );
   });
 
   it("keeps webhook delivery logs, which hold request bodies, behind operate scope", () => {
@@ -132,6 +186,54 @@ describe("RPC scope middleware", () => {
     }).pipe(Effect.scoped),
   );
 });
+
+it.effect.each([
+  { scopes: [AuthFilesystemWriteScope], missing: AuthOrchestrationReadScope },
+  { scopes: [AuthOrchestrationReadScope], missing: AuthFilesystemWriteScope },
+  { scopes: [AuthFilesystemWriteScope, AuthOrchestrationReadScope], missing: null },
+])("checks both grants before capturing a result into Spaces: $missing", ({ scopes, missing }) =>
+  Effect.gen(function* () {
+    const group = WsRpcGroup.omit(
+      ...[...WsRpcGroup.requests.keys()].filter(
+        (
+          tag,
+        ): tag is Exclude<
+          keyof typeof RPC_REQUIRED_SCOPES,
+          typeof WS_METHODS.workspacePagesCapture
+        > => tag !== WS_METHODS.workspacePagesCapture,
+      ),
+    );
+    let handled = 0;
+    const client = yield* RpcTest.makeClient(group).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          group.toLayerHandler(WS_METHODS.workspacePagesCapture, () =>
+            Effect.sync(() => {
+              handled++;
+              return { status: "saved" as const, page: null };
+            }),
+          ),
+          RpcAuthorization.layer(scopes),
+        ),
+      ),
+    );
+    const request = client[WS_METHODS.workspacePagesCapture]({
+      id: "copy",
+      threadId: ThreadId.make("work"),
+      runId: RunId.make("result"),
+    });
+    if (missing) {
+      expect(yield* request.pipe(Effect.flip)).toMatchObject({
+        _tag: "EnvironmentAuthorizationError",
+        requiredPermission: missing,
+      });
+      expect(handled).toBe(0);
+    } else {
+      yield* request;
+      expect(handled).toBe(1);
+    }
+  }).pipe(Effect.scoped),
+);
 
 describe("settings mutation authorization", () => {
   const group = WsRpcGroup.omit(

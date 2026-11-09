@@ -2,6 +2,9 @@ import type {
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
 } from "@t3tools/contracts";
+import * as BotStore from "../bots/BotStore.ts";
+import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
+import { selectBotFallback } from "../bots/botModelSelection.ts";
 import type {
   ProjectionRecordField,
   ProjectionRecordFilter,
@@ -576,6 +579,8 @@ const make = Effect.gen(function* () {
   const legacyImporter = yield* LegacyV1ThreadImporter.LegacyV1ThreadImporter;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const receipts = yield* CommandReceiptStore.CommandReceiptStoreV2;
+  const botStore = yield* Effect.serviceOption(BotStore.BotStore);
+  const providerRegistry = yield* Effect.serviceOption(ProviderRegistry.ProviderRegistry);
 
   const assertProviderInstanceEnabled: ThreadManagementServiceShape["assertProviderInstanceEnabled"] =
     (input) =>
@@ -747,11 +752,68 @@ const make = Effect.gen(function* () {
     }
   };
 
-  const dispatch: ThreadManagementServiceShape["dispatch"] = (command) =>
-    ensureCommandTranscripts(command).pipe(
-      Effect.andThen(assertDispatchTargetEnabled(command)),
-      Effect.andThen(orchestrator.dispatch(command)),
-    );
+  const dispatch: ThreadManagementServiceShape["dispatch"] = Effect.fn(
+    "ThreadManagementService.dispatch",
+  )(function* (original) {
+    let command = original;
+    const receipt = yield* receipts
+      .getByCommandId(command.commandId)
+      .pipe(Effect.orElseSucceed(() => Option.none()));
+    if (
+      command.type === "message.dispatch" &&
+      command.dispatchMode.type !== "steer_active" &&
+      Option.isNone(receipt) &&
+      Option.isSome(botStore) &&
+      Option.isSome(providerRegistry)
+    ) {
+      const projection = yield* orchestrator.getThreadRecords(command.threadId, []);
+      const identity = yield* botStore.value.forThread(command.threadId).pipe(
+        Effect.mapError(
+          (cause) =>
+            new Orchestrator.OrchestratorDispatchError({
+              commandId: command.commandId,
+              commandType: command.type,
+              cause,
+            }),
+        ),
+      );
+      const work = yield* botStore.value.workForThread(command.threadId).pipe(
+        Effect.mapError(
+          (cause) =>
+            new Orchestrator.OrchestratorDispatchError({
+              commandId: command.commandId,
+              commandType: command.type,
+              cause,
+            }),
+        ),
+      );
+      const bot = identity ?? work?.coordinator ?? null;
+      if (bot?.config.capabilities?.fallbackModels.length)
+        command = {
+          ...command,
+          modelSelection: selectBotFallback({
+            selection: command.modelSelection ?? projection.thread.modelSelection,
+            bot,
+            providers: yield* providerRegistry.value.getProviders,
+            settings: yield* serverSettings.getSettings.pipe(
+              Effect.mapError(
+                (cause) =>
+                  new Orchestrator.OrchestratorDispatchError({
+                    commandId: command.commandId,
+                    commandType: command.type,
+                    cause,
+                  }),
+              ),
+            ),
+            projectId: projection.thread.projectId,
+            now: DateTime.toEpochMillis(yield* DateTime.now),
+          }),
+        };
+    }
+    yield* ensureCommandTranscripts(command);
+    yield* assertDispatchTargetEnabled(command);
+    return yield* orchestrator.dispatch(command);
+  });
 
   const getProjectThreadRecords: ThreadManagementServiceShape["getProjectThreadRecords"] = (
     input,

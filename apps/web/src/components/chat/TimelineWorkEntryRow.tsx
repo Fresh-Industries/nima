@@ -1,4 +1,9 @@
 import { TimelinePendingApprovalRow } from "./TimelinePendingApprovalRow";
+import { usePersonalChat } from "../../nima/useDailyConversation";
+import { AssistantWorkCard } from "../../nima/AssistantWorkCard";
+import { scheduledTaskResultId } from "@t3tools/client-runtime/t3ToolSummary";
+import { resolveT3McpSummaryAction } from "@t3tools/shared/t3McpToolPresentation";
+import { ScheduledBotResult } from "../../nima/ScheduledBotResult";
 import { WorkLogDetails, WorkLogRow } from "./WorkLog";
 import {
   getQuestionAnswerPreview,
@@ -151,9 +156,52 @@ type WorkEntryRowProps = {
 
 export const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: WorkEntryRowProps) {
   const ctx = use(TimelineRowCtx);
+  const personal = usePersonalChat();
   const item = props.workEntry.projectedItem?.item;
+  const botId =
+    item?.type === "dynamic_tool"
+      ? scheduledTaskResultId(item.toolName, {
+          input: item.input,
+          output: item.output,
+          outcome:
+            props.workEntry.toolLifecycleStatus === "completed"
+              ? "completed"
+              : props.workEntry.toolLifecycleStatus === "failed"
+                ? "failed"
+                : "unfinished",
+        })
+      : undefined;
+  if (botId && item?.type === "dynamic_tool")
+    return (
+      <ScheduledBotResult
+        environmentId={ctx.activeThreadEnvironmentId}
+        taskId={botId}
+        updated={resolveT3McpSummaryAction(item.toolName, item.input) === "schedule-update"}
+        fallback={<WorkEntryLogRow {...props} />}
+      />
+    );
   const childThreadId =
     item?.type === "notification" ? notificationChildThreadId(item.source) : undefined;
+  if (
+    personal &&
+    item?.type === "notification" &&
+    item.source.kind === "delegated_task" &&
+    item.source.taskIds.length
+  )
+    return (
+      <div>
+        {item.source.taskIds.map((taskId) => (
+          <AssistantWorkCard
+            key={taskId}
+            itemId={item.id}
+            parentRef={scopeThreadRef(ctx.activeThreadEnvironmentId, item.threadId)}
+            taskId={taskId}
+            threadId={childThreadId}
+            fallback={<WorkEntryLogRow {...props} />}
+          />
+        ))}
+      </div>
+    );
   if (item?.type !== "notification" || childThreadId === undefined) {
     return <WorkEntryLogRow {...props} />;
   }

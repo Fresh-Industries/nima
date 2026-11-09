@@ -1,3 +1,61 @@
+import { WorkSessionCreateInput, WorkSessionCreated, WorkSessionError } from "./workSessions.ts";
+import {
+  BotReadInput,
+  BotCreateInput,
+  BotWriteInput,
+  BotWriteResult,
+  BotProfile,
+  BotsSnapshot,
+  BotError,
+  BotApprovalResolveInput,
+  BotToolApproval,
+} from "./bots.ts";
+import {
+  PersonalAgentProfile,
+  PersonalAgentWriteInput,
+  PersonalAgentWriteResult,
+  PersonalAgentOpenInput,
+  MemoryListInput,
+  MemorySnapshot,
+  MemoryWriteInput,
+  MemoryWriteResult,
+  PersonalAgentError,
+} from "./personalAgent.ts";
+import {
+  StudioReadInput,
+  StudioSnapshot,
+  StudioMutationInput,
+  StudioExportInput,
+  StudioExportResult,
+  StudioError,
+} from "./studio.ts";
+import {
+  WorkspacePage,
+  WorkspacePagesSnapshot,
+  WorkspacePagesSubscribeInput,
+  WorkspacePageReadInput,
+  WorkspacePageWriteInput,
+  WorkspacePageWriteResult,
+  WorkspacePageCaptureInput,
+  WorkspacePageError,
+} from "./workspacePages.ts";
+import {
+  WorkspaceGoal,
+  WorkspaceGoalError,
+  WorkspaceGoalsSnapshot,
+  WorkspaceGoalReadInput,
+  WorkspaceGoalWriteInput,
+  WorkspaceGoalWriteResult,
+  WorkspaceGoalProgressInput,
+  WorkspaceGoalHistoryInput,
+  WorkspaceGoalHistory,
+} from "./workspaceGoals.ts";
+import {
+  WorkspaceNote,
+  WorkspaceNoteError,
+  WorkspaceNoteWriteInput,
+  WorkspaceNoteWriteResult,
+} from "./workspaceNotes.ts";
 import {
   OrchestrationV2SearchThreadError,
   OrchestrationV2SearchThreadInput,
@@ -33,6 +91,12 @@ import {
   ChatGptHandoffInput,
   ChatGptHandoffState,
 } from "./providerSetup.ts";
+import {
+  ProjectTeamsSnapshot,
+  ProjectTeamWriteInput,
+  ProjectTeamWriteResult,
+  ProjectTeamError,
+} from "./projectTeams.ts";
 import * as Schema from "effect/Schema";
 import * as Rpc from "effect/rpc/Rpc";
 import * as RpcGroup from "effect/rpc/RpcGroup";
@@ -365,6 +429,8 @@ import {
   ScheduledTaskError,
   ScheduledTaskListInput,
   ScheduledTaskListResult,
+  ScheduledTaskListRunsInput,
+  ScheduledTaskListRunsResult,
   ScheduledTaskRunNowInput,
   ScheduledTaskRotateWebhookTokenInput,
   ScheduledTaskListWebhookDeliveriesInput,
@@ -376,6 +442,12 @@ import {
   ScheduledTaskUpsertInput,
   ScheduledTaskMutationResult,
 } from "./scheduledTask.ts";
+import {
+  WorkspaceReviewError,
+  WorkspaceReviewReadInput,
+  WorkspaceReviewSnapshot,
+  WorkspaceReviewWriteInput,
+} from "./workspaceReview.ts";
 import { SecretRequestAnswerInput, SecretRequestError } from "./secretRequest.ts";
 import {
   ProjectCloneActionInput,
@@ -406,6 +478,36 @@ import { VcsError } from "./vcs.ts";
 import { Project, ProjectMutation, ProjectMutationError } from "./project.ts";
 
 export const WS_METHODS = {
+  projectTeamsSubscribe: "projectTeams.subscribe",
+  projectTeamsWrite: "projectTeams.write",
+  botsSubscribe: "bots.subscribe",
+  botsCreate: "bots.create",
+  botsWrite: "bots.write",
+  botsResolveApproval: "bots.resolveApproval",
+  botsOpen: "bots.open",
+  personalAgentRead: "personalAgent.read",
+  personalAgentSubscribe: "personalAgent.subscribe",
+  personalAgentWrite: "personalAgent.write",
+  personalAgentOpen: "personalAgent.open",
+  personalAgentMemories: "personalAgent.memories",
+  personalAgentMemorySubscribe: "personalAgent.memorySubscribe",
+  personalAgentRemember: "personalAgent.remember",
+  studioRead: "studio.read",
+  studioSubscribe: "studio.subscribe",
+  studioMutate: "studio.mutate",
+  studioExport: "studio.export",
+  workspaceGoalsRead: "workspaceGoals.read",
+  workspaceGoalsWrite: "workspaceGoals.write",
+  workspaceGoalsProgress: "workspaceGoals.progress",
+  workspaceGoalsHistory: "workspaceGoals.history",
+  workspaceGoalsSubscribe: "workspaceGoals.subscribe",
+  workspacePagesRead: "workspacePages.read",
+  workspacePagesWrite: "workspacePages.write",
+  workspacePagesCapture: "workspacePages.capture",
+  workspacePagesSubscribe: "workspacePages.subscribe",
+  workspaceNotesRead: "workspaceNotes.read",
+  workspaceNotesWrite: "workspaceNotes.write",
+  workspaceNotesSubscribe: "workspaceNotes.subscribe",
   projectsListEntries: "projects.listEntries",
   projectsListIgnoredFiles: "projects.listIgnoredFiles",
   projectsReadFile: "projects.readFile",
@@ -539,6 +641,10 @@ export const WS_METHODS = {
   serverRefreshUsageRates: "server.refreshUsageRates",
 
   scheduledTasksSubscribe: "scheduledTasks.subscribe",
+  workspaceReviewSubscribe: "workspaceReview.subscribe",
+  workspaceWorkCreate: "workspaceWork.create",
+  workspaceReviewWrite: "workspaceReview.write",
+  scheduledTasksListRuns: "scheduledTasks.listRuns",
   scheduledTasksUpsert: "scheduledTasks.upsert",
   scheduledTasksSetEnabled: "scheduledTasks.setEnabled",
   scheduledTasksDelete: "scheduledTasks.delete",
@@ -1891,16 +1997,200 @@ const WsSubscribeServerLifecycleRpc = Rpc.make(WS_METHODS.subscribeServerLifecyc
   stream: true,
 });
 
+const WsWorkspaceGoalsReadRpc = Rpc.make(WS_METHODS.workspaceGoalsRead, {
+  payload: WorkspaceGoalReadInput,
+  success: Schema.NullOr(WorkspaceGoal),
+  error: Schema.Union([WorkspaceGoalError, EnvironmentAuthorizationError]),
+});
+const WsWorkspaceGoalsWriteRpc = Rpc.make(WS_METHODS.workspaceGoalsWrite, {
+  payload: WorkspaceGoalWriteInput,
+  success: WorkspaceGoalWriteResult,
+  error: Schema.Union([WorkspaceGoalError, EnvironmentAuthorizationError]),
+});
+const WsWorkspaceGoalsProgressRpc = Rpc.make(WS_METHODS.workspaceGoalsProgress, {
+  payload: WorkspaceGoalProgressInput,
+  success: Schema.NullOr(WorkspaceGoal),
+  error: Schema.Union([WorkspaceGoalError, EnvironmentAuthorizationError]),
+});
+const WsWorkspaceGoalsHistoryRpc = Rpc.make(WS_METHODS.workspaceGoalsHistory, {
+  payload: WorkspaceGoalHistoryInput,
+  success: WorkspaceGoalHistory,
+  error: Schema.Union([WorkspaceGoalError, EnvironmentAuthorizationError]),
+});
+const WsWorkspaceGoalsSubscribeRpc = Rpc.make(WS_METHODS.workspaceGoalsSubscribe, {
+  payload: Schema.Struct({}),
+  success: WorkspaceGoalsSnapshot,
+  error: Schema.Union([WorkspaceGoalError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+const WsProjectTeamsSubscribeRpc = Rpc.make(WS_METHODS.projectTeamsSubscribe, {
+  payload: Schema.Struct({}),
+  success: ProjectTeamsSnapshot,
+  error: Schema.Union([ProjectTeamError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+const WsProjectTeamsWriteRpc = Rpc.make(WS_METHODS.projectTeamsWrite, {
+  payload: ProjectTeamWriteInput,
+  success: ProjectTeamWriteResult,
+  error: Schema.Union([ProjectTeamError, EnvironmentAuthorizationError]),
+});
+const WsBotsSubscribeRpc = Rpc.make(WS_METHODS.botsSubscribe, {
+  payload: Schema.Struct({}),
+  success: BotsSnapshot,
+  error: BotError,
+  stream: true,
+});
+const WsBotsCreateRpc = Rpc.make(WS_METHODS.botsCreate, {
+  payload: BotCreateInput,
+  success: BotProfile,
+  error: BotError,
+});
+const WsBotsWriteRpc = Rpc.make(WS_METHODS.botsWrite, {
+  payload: BotWriteInput,
+  success: BotWriteResult,
+  error: BotError,
+});
+const WsBotsResolveApprovalRpc = Rpc.make(WS_METHODS.botsResolveApproval, {
+  payload: BotApprovalResolveInput,
+  success: BotToolApproval,
+  error: Schema.Union([BotError, EnvironmentAuthorizationError]),
+});
+const WsBotsOpenRpc = Rpc.make(WS_METHODS.botsOpen, {
+  payload: BotReadInput,
+  success: BotProfile,
+  error: BotError,
+});
+const WsPersonalAgentReadRpc = Rpc.make(WS_METHODS.personalAgentRead, {
+  payload: Schema.Struct({}),
+  success: PersonalAgentProfile,
+  error: PersonalAgentError,
+});
+const WsPersonalAgentSubscribeRpc = Rpc.make(WS_METHODS.personalAgentSubscribe, {
+  payload: Schema.Struct({}),
+  success: PersonalAgentProfile,
+  error: PersonalAgentError,
+  stream: true,
+});
+const WsPersonalAgentWriteRpc = Rpc.make(WS_METHODS.personalAgentWrite, {
+  payload: PersonalAgentWriteInput,
+  success: PersonalAgentWriteResult,
+  error: PersonalAgentError,
+});
+const WsPersonalAgentOpenRpc = Rpc.make(WS_METHODS.personalAgentOpen, {
+  payload: PersonalAgentOpenInput,
+  success: PersonalAgentProfile,
+  error: PersonalAgentError,
+});
+const WsPersonalAgentMemoriesRpc = Rpc.make(WS_METHODS.personalAgentMemories, {
+  payload: MemoryListInput,
+  success: MemorySnapshot,
+  error: PersonalAgentError,
+});
+const WsPersonalAgentMemorySubscribeRpc = Rpc.make(WS_METHODS.personalAgentMemorySubscribe, {
+  payload: MemoryListInput,
+  success: MemorySnapshot,
+  error: PersonalAgentError,
+  stream: true,
+});
+const WsPersonalAgentRememberRpc = Rpc.make(WS_METHODS.personalAgentRemember, {
+  payload: MemoryWriteInput,
+  success: MemoryWriteResult,
+  error: PersonalAgentError,
+});
+const WsStudioReadRpc = Rpc.make(WS_METHODS.studioRead, {
+  payload: StudioReadInput,
+  success: StudioSnapshot,
+  error: Schema.Union([StudioError, EnvironmentAuthorizationError]),
+});
+const WsStudioSubscribeRpc = Rpc.make(WS_METHODS.studioSubscribe, {
+  payload: StudioReadInput,
+  success: StudioSnapshot,
+  error: Schema.Union([StudioError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+const WsStudioMutateRpc = Rpc.make(WS_METHODS.studioMutate, {
+  payload: StudioMutationInput,
+  success: Schema.Json,
+  error: Schema.Union([StudioError, EnvironmentAuthorizationError]),
+});
+const WsStudioExportRpc = Rpc.make(WS_METHODS.studioExport, {
+  payload: StudioExportInput,
+  success: StudioExportResult,
+  error: Schema.Union([StudioError, EnvironmentAuthorizationError]),
+});
+
+const WsWorkspacePagesReadRpc = Rpc.make(WS_METHODS.workspacePagesRead, {
+  payload: WorkspacePageReadInput,
+  success: Schema.NullOr(WorkspacePage),
+  error: Schema.Union([WorkspacePageError, EnvironmentAuthorizationError]),
+});
+const WsWorkspacePagesWriteRpc = Rpc.make(WS_METHODS.workspacePagesWrite, {
+  payload: WorkspacePageWriteInput,
+  success: WorkspacePageWriteResult,
+  error: Schema.Union([WorkspacePageError, EnvironmentAuthorizationError]),
+});
+const WsWorkspacePagesCaptureRpc = Rpc.make(WS_METHODS.workspacePagesCapture, {
+  payload: WorkspacePageCaptureInput,
+  success: WorkspacePageWriteResult,
+  error: Schema.Union([WorkspacePageError, EnvironmentAuthorizationError]),
+});
+const WsWorkspacePagesSubscribeRpc = Rpc.make(WS_METHODS.workspacePagesSubscribe, {
+  payload: WorkspacePagesSubscribeInput,
+  success: WorkspacePagesSnapshot,
+  error: Schema.Union([WorkspacePageError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
+const WsWorkspaceNotesReadRpc = Rpc.make(WS_METHODS.workspaceNotesRead, {
+  payload: Schema.Struct({}),
+  success: WorkspaceNote,
+  error: Schema.Union([WorkspaceNoteError, EnvironmentAuthorizationError]),
+});
+const WsWorkspaceNotesWriteRpc = Rpc.make(WS_METHODS.workspaceNotesWrite, {
+  payload: WorkspaceNoteWriteInput,
+  success: WorkspaceNoteWriteResult,
+  error: Schema.Union([WorkspaceNoteError, EnvironmentAuthorizationError]),
+});
+const WsWorkspaceNotesSubscribeRpc = Rpc.make(WS_METHODS.workspaceNotesSubscribe, {
+  payload: Schema.Struct({}),
+  success: WorkspaceNote,
+  error: Schema.Union([WorkspaceNoteError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+
 const WsScheduledTasksSubscribeRpc = Rpc.make(WS_METHODS.scheduledTasksSubscribe, {
   payload: ScheduledTaskListInput,
   success: ScheduledTaskListResult,
   error: Schema.Union([ScheduledTaskError, EnvironmentAuthorizationError]),
   stream: true,
 });
+const WsWorkspaceReviewSubscribeRpc = Rpc.make(WS_METHODS.workspaceReviewSubscribe, {
+  payload: WorkspaceReviewReadInput,
+  success: WorkspaceReviewSnapshot,
+  error: Schema.Union([WorkspaceReviewError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+const WsWorkspaceWorkCreateRpc = Rpc.make(WS_METHODS.workspaceWorkCreate, {
+  payload: WorkSessionCreateInput,
+  success: WorkSessionCreated,
+  error: Schema.Union([WorkSessionError, EnvironmentAuthorizationError]),
+});
+const WsWorkspaceReviewWriteRpc = Rpc.make(WS_METHODS.workspaceReviewWrite, {
+  payload: WorkspaceReviewWriteInput,
+  success: Schema.Struct({}),
+  error: Schema.Union([WorkspaceReviewError, EnvironmentAuthorizationError]),
+});
 
 const WsScheduledTasksUpsertRpc = Rpc.make(WS_METHODS.scheduledTasksUpsert, {
   payload: ScheduledTaskUpsertInput,
   success: ScheduledTaskMutationResult,
+  error: Schema.Union([ScheduledTaskError, EnvironmentAuthorizationError]),
+});
+
+const WsScheduledTasksListRunsRpc = Rpc.make(WS_METHODS.scheduledTasksListRuns, {
+  payload: ScheduledTaskListRunsInput,
+  success: ScheduledTaskListRunsResult,
   error: Schema.Union([ScheduledTaskError, EnvironmentAuthorizationError]),
 });
 
@@ -2036,7 +2326,41 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetUsageSummaryRpc,
   WsServerRefreshUsageRatesRpc,
   WsServerSignalProcessRpc,
+  WsWorkspaceGoalsReadRpc,
+  WsWorkspaceGoalsWriteRpc,
+  WsWorkspaceGoalsProgressRpc,
+  WsWorkspaceGoalsHistoryRpc,
+  WsWorkspaceGoalsSubscribeRpc,
+  WsProjectTeamsSubscribeRpc,
+  WsProjectTeamsWriteRpc,
+  WsBotsSubscribeRpc,
+  WsBotsCreateRpc,
+  WsBotsWriteRpc,
+  WsBotsResolveApprovalRpc,
+  WsBotsOpenRpc,
+  WsPersonalAgentReadRpc,
+  WsPersonalAgentSubscribeRpc,
+  WsPersonalAgentWriteRpc,
+  WsPersonalAgentOpenRpc,
+  WsPersonalAgentMemoriesRpc,
+  WsPersonalAgentMemorySubscribeRpc,
+  WsPersonalAgentRememberRpc,
+  WsStudioReadRpc,
+  WsStudioSubscribeRpc,
+  WsStudioMutateRpc,
+  WsStudioExportRpc,
+  WsWorkspacePagesReadRpc,
+  WsWorkspacePagesWriteRpc,
+  WsWorkspacePagesCaptureRpc,
+  WsWorkspacePagesSubscribeRpc,
+  WsWorkspaceNotesReadRpc,
+  WsWorkspaceNotesWriteRpc,
+  WsWorkspaceNotesSubscribeRpc,
   WsScheduledTasksSubscribeRpc,
+  WsWorkspaceReviewSubscribeRpc,
+  WsWorkspaceReviewWriteRpc,
+  WsWorkspaceWorkCreateRpc,
+  WsScheduledTasksListRunsRpc,
   WsScheduledTasksUpsertRpc,
   WsScheduledTasksSetEnabledRpc,
   WsScheduledTasksDeleteRpc,

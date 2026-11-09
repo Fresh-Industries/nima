@@ -45,6 +45,7 @@ interface CompactToolOutput {
   threads?: Array<{ threadId?: string; status?: "rolled_back" }>;
   linkedCount?: number;
   unlinkedCount?: number;
+  current_revision?: number;
 }
 
 function readResult(value: unknown, budget: ResultReadBudget, depth = 0): ResultEnvelope {
@@ -128,6 +129,13 @@ export function compactDynamicToolOutput(value: unknown): CompactToolOutput | un
     for (const key of ["linkedCount", "unlinkedCount"] as const) {
       const count = data[key];
       if (typeof count === "number" && Number.isSafeInteger(count)) output[key] = count;
+    }
+    if (
+      typeof data.current_revision === "number" &&
+      Number.isSafeInteger(data.current_revision) &&
+      data.current_revision >= 0
+    ) {
+      output.current_revision = data.current_revision;
     }
     const htmlRender = readHtmlRenderReference(data.htmlRender);
     if (htmlRender !== undefined) output.htmlRender = htmlRender;

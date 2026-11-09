@@ -1,3 +1,11 @@
+import { useWorkSessionConversation } from "../nima/workSessionContext";
+import { useBotConversation } from "../nima/useBots";
+import { ConversationHandoff } from "../nima/ConversationHandoff";
+import { createPortal } from "react-dom";
+import { useCompanionPanel } from "../nima/CompanionPanel";
+import { usePersonalChat } from "../nima/useDailyConversation";
+import { useAssistantDayWindow } from "../nima/useAssistantDayWindow";
+import { AssistantWelcome, AssistantStartActions } from "../nima/AssistantWelcome";
 import { ChildThreadApprovals } from "./chat/ChildThreadApprovals";
 import { workspaceAreaProps } from "../lib/workspaceFocus";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
@@ -109,7 +117,15 @@ import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { resolveThreadReferenceCopyTarget } from "@t3tools/client-runtime/thread-reference";
 import { resolveTerminalSessionLabel } from "@t3tools/shared/terminalLabels";
 import { useAtomValue } from "@effect/atom-react";
-import { type SetStateAction, use, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  type SetStateAction,
+  type ReactNode,
+  use,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { BackgroundThreadContext } from "./chat/backgroundThread";
 import { WorkspaceMutationIdContext } from "./chat/ChatMarkdownMedia";
 import { useLocation, useNavigate } from "@tanstack/react-router";
@@ -270,6 +286,7 @@ import {
 import type { AssistantCitationRequest } from "./chat/AssistantCitationSource";
 import { useCitedHistory } from "./chat/citationProcedure";
 import type { MessagesTimelineHistoryControls } from "./chat/MessagesTimeline";
+import type { TimelineEntry } from "../session-logic";
 import { ThreadTimeline } from "./chat/ThreadTimeline";
 import { NativeChildWorkDialog } from "./chat/NativeChildWorkDialog";
 import { ProviderSubagentBar } from "./chat/ProviderSubagentBar";
@@ -424,6 +441,12 @@ export default function ChatView(props: ChatViewProps) {
     embedded: parentPanel,
   } = props;
   const embedded = parentPanel !== undefined;
+  const companionPanel = useCompanionPanel();
+  const companionHost = embedded ? null : companionPanel?.host;
+  const workSessionConversation = useWorkSessionConversation();
+  const isPersonalChat = usePersonalChat() && !embedded;
+  const botConversation = useBotConversation();
+  const isRelationshipChat = isPersonalChat || (botConversation !== null && !embedded);
   const canOperateThread = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
   const canOperateTerminal = useEnvironmentScope(environmentId, AuthTerminalOperateScope);
   const draftId = routeKind === "draft" ? props.draftId : null;
@@ -600,6 +623,9 @@ export default function ChatView(props: ChatViewProps) {
     const draft = store.getComposerDraft(composerDraftTarget);
     return (draft?.images.length ?? 0) > 0 || (draft?.files.length ?? 0) > 0;
   });
+  const composerHasPrompt = useComposerDraftStore((store) =>
+    Boolean(store.getComposerDraft(composerDraftTarget)?.prompt.trim()),
+  );
   const referencedThreadContexts = useComposerDraftStore(
     useShallow((store) => {
       const draft = store.getComposerDraft(composerDraftTarget);
@@ -1075,8 +1101,13 @@ export default function ChatView(props: ChatViewProps) {
   const rightPanelControlsInPanel =
     shouldUsePlanSidebarSheet && rightPanelPresent && rightPanelOpen;
   const rightPanelControlsAtRoot = rightPanelPresent && !shouldUsePlanSidebarSheet;
-  const renderedRightPanelSurface = rightPanelPresence.value?.activeSurface ?? null;
-  const renderedRightPanelSurfaces = rightPanelPresence.value?.surfaces ?? [];
+  const renderedRightPanelSurface = companionHost
+    ? (rightPanelState.surfaces.find((surface) => surface.id === rightPanelState.activeSurfaceId) ??
+      null)
+    : (rightPanelPresence.value?.activeSurface ?? null);
+  const renderedRightPanelSurfaces = companionHost
+    ? rightPanelState.surfaces
+    : (rightPanelPresence.value?.surfaces ?? []);
   const previewMiniPlayerVisible = shouldRenderPreviewMiniPlayer(
     activePreviewMiniPlayer?.source ?? null,
     renderedRightPanelSurface,
@@ -1084,8 +1115,9 @@ export default function ChatView(props: ChatViewProps) {
   const canMaximizeRightPanel = rightPanelOpen;
   // An embedded side chat has no panel; a stale maximized flag would hide its own column.
   const rightPanelMaximized =
-    !embedded && canMaximizeRightPanel && rightPanelState.maximized === true;
-  const inlineRightPanelOwnsTitleBar = rightPanelOpen && !shouldUsePlanSidebarSheet;
+    !embedded && !companionHost && canMaximizeRightPanel && rightPanelState.maximized === true;
+  const inlineRightPanelOwnsTitleBar =
+    !companionHost && rightPanelOpen && !shouldUsePlanSidebarSheet;
   const [threadPanelPopoverHandle] = useState(PopoverCreateHandle);
   const [chatCanvasStore] = useState(createChatCanvasStore);
 
@@ -1190,6 +1222,8 @@ export default function ChatView(props: ChatViewProps) {
     activeProjectIsScratch && draftId !== null,
   );
   const hasMultipleEnvironments = logicalProjectEnvironments.length > 1;
+  const hideProjectChrome =
+    isRelationshipChat || (!embedded && (workSessionConversation || activeProjectIsScratch));
   const canAutoBalanceEnvironments = hasMultipleEnvironments && !activeProjectIsScratch;
   const activeEnvironmentOption =
     logicalProjectEnvironments.find(
@@ -1533,6 +1567,8 @@ export default function ChatView(props: ChatViewProps) {
   const serverTimelineRows = serverVisibleTurnItems.filter(isCompleteTurnItemRow);
   const hasStreamedTimelineRows =
     isServerThread && serverTimelineRows.length !== serverVisibleTurnItems.length;
+  const threadFindEnabled = isServerThread && serverConfig?.threadFind === true;
+  const isThreadFindActive = useThreadFindOpen(activeThreadRef, threadFindEnabled);
   const serverTimelineEntries = useIncrementalTimelineEntries(activeThreadKey, {
     ...timelineEntriesInput,
     visibleTurnItems: serverTimelineRows,
@@ -1546,7 +1582,14 @@ export default function ChatView(props: ChatViewProps) {
         message,
       }) as const,
   );
-  const timelineEntries = isServerThread ? serverTimelineEntries : draftTimelineEntries;
+  const assistantDay = useAssistantDayWindow<TimelineEntry>({
+    enabled: isPersonalChat,
+    threadKey: activeThreadKey,
+    entries: isServerThread ? serverTimelineEntries : draftTimelineEntries,
+    history: threadHistoryControls,
+    searching: isThreadFindActive || timelineAnchorMessageId !== null,
+  });
+  const timelineEntries = assistantDay.entries;
   const timelineMessages = timelineEntries.flatMap((entry) =>
     entry.kind === "message" ? [entry.message] : [],
   );
@@ -1580,6 +1623,7 @@ export default function ChatView(props: ChatViewProps) {
     activeThreadKey !== null && dockedDraftHeroThreadKey === activeThreadKey;
   const isDraftHeroState = resolveDraftHeroState({
     isLocalDraftThread,
+    isPersonalChat: isRelationshipChat,
     hasTimelineEntries: !timelineEmpty,
     isWorking,
     draftHeroDockRequested,
@@ -1740,6 +1784,7 @@ export default function ChatView(props: ChatViewProps) {
         );
   const showComposerContextStrip =
     !embedded &&
+    !hideProjectChrome &&
     shouldShowComposerContextStrip({
       isDraftHeroState,
       persistInActiveThreads: settings.persistComposerContextStrip,
@@ -2401,7 +2446,7 @@ export default function ChatView(props: ChatViewProps) {
     sendStandaloneCommand,
     setBranchMismatchDismissTick,
     showBranchMismatchBanner,
-    threadStatusLine,
+    threadStatusLine: lifecycleStatusLine,
     shortcuts: threadLifecycleShortcuts,
   } = useThreadLifecycle({
     environmentId,
@@ -2678,8 +2723,6 @@ export default function ChatView(props: ChatViewProps) {
   const timelineSkills = activeProviderStatus
     ? resolveProviderSkillsForCwd(activeProviderStatus, gitCwd)
     : EMPTY_PROVIDER_SKILLS;
-  const threadFindEnabled = isServerThread && serverConfig?.threadFind === true;
-  const isThreadFindActive = useThreadFindOpen(activeThreadRef, threadFindEnabled);
   const openThreadFindStable = useStableCallback((threadRef: ScopedThreadRef) => {
     if (threadFindEnabled && scopedThreadKey(threadRef) === activeThreadKey) {
       openThreadFind(activeThreadKey);
@@ -2973,6 +3016,13 @@ export default function ChatView(props: ChatViewProps) {
   };
   const onWorktreeSetupWorkLocallyStable = useStableCallback(onWorktreeSetupWorkLocally);
   const onComposerSendStable = useStableCallback(onSend);
+  const sendConversationHandoff = () => {
+    // The composer syncs this ref in a passive effect; a handoff can send before it runs.
+    promptRef.current =
+      useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.prompt ?? "";
+    return onSend();
+  };
+  const sendConversationHandoffStable = useStableCallback(sendConversationHandoff);
   const sendPreviewAnnotation = (
     annotation: PreviewAnnotationPayload,
     image: ComposerImageAttachment | null,
@@ -3083,6 +3133,7 @@ export default function ChatView(props: ChatViewProps) {
   };
   const onExpandTimelineImageStable = useStableCallback(onExpandTimelineImage);
   const shownThreadSyncPhase = activeEnvironmentUnavailable ? null : delayedThreadSyncPhase;
+  const threadStatusLine = isRelationshipChat ? null : lifecycleStatusLine;
   const hasThreadNow =
     attentionNow !== null || workNow !== null || goalNow !== null || shownThreadSyncPhase !== null;
   const queuedRunCount = serverProjection ? getUserQueuedThreadRuns(serverProjection).length : 0;
@@ -3195,7 +3246,7 @@ export default function ChatView(props: ChatViewProps) {
       activeSurfaceId={activeRightPanelSurface?.id ?? null}
       threadRef={activeThreadRef}
       environmentId={activeThread.environmentId}
-      visible={rightPanelOpen}
+      visible={rightPanelOpen && (companionPanel?.nativeVisible ?? true)}
       composerDraftTarget={composerDraftTarget}
       keybindings={keybindings}
       configuredPreviewUrls={configuredPreviewUrls}
@@ -3279,6 +3330,8 @@ export default function ChatView(props: ChatViewProps) {
     addFolders: addDroppedFoldersToComposer,
   });
 
+  const renderPanel = (panel: ReactNode) =>
+    companionHost ? createPortal(panel, companionHost) : panel;
   const content = (
     <div
       ref={setWorkspaceLayoutElement}
@@ -3291,7 +3344,9 @@ export default function ChatView(props: ChatViewProps) {
           state={deviceState}
         />
       )}
-      {rightPanelControlsAtRoot && !embedded ? panelLayoutControls : null}
+      {rightPanelControlsAtRoot && !embedded && !hideProjectChrome && !companionHost
+        ? panelLayoutControls
+        : null}
       <div
         className={cn(
           "flex min-h-0 min-w-0 flex-col overflow-x-hidden",
@@ -3299,9 +3354,10 @@ export default function ChatView(props: ChatViewProps) {
         )}
         data-chat-column-maximized-away={rightPanelMaximized ? "true" : "false"}
         data-chat-column
+        data-bara-assistant-home={(isPersonalChat && isDraftHeroState) || undefined}
         inert={rightPanelMaximized}
       >
-        {embedded ? null : (
+        {embedded || hideProjectChrome ? null : (
           <header
             ref={threadPanelPopoverAnchorRef}
             data-chat-header
@@ -3389,6 +3445,14 @@ export default function ChatView(props: ChatViewProps) {
             >
               <WorkspaceMutationIdContext value={workspaceMutationId}>
                 <ThreadTimeline
+                  dayCutoff={assistantDay.cutoff}
+                  timezone={assistantDay.timezone}
+                  historyHeader={assistantDay.historyHeader}
+                  assistantDays={
+                    isPersonalChat
+                      ? { timezone: assistantDay.timezone, today: assistantDay.today }
+                      : undefined
+                  }
                   pendingApprovals={pendingApprovals}
                   heldApprovalRequestIds={heldApprovalRequestIds}
                   respondingRequestIds={respondingRequestIds}
@@ -3479,10 +3543,12 @@ export default function ChatView(props: ChatViewProps) {
                   onIsAtEndChange={onIsAtEndChangeStable}
                   onViewportAttach={attachTimelineViewport}
                   onFooterGrow={onTimelineFooterGrowStable}
-                  hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
+                  hideEmptyPlaceholder={
+                    isRelationshipChat || isDraftHeroState || threadDetailLoading
+                  }
                   emptyPlaceholderInset={composerReservedHeight}
                   topFadeEnabled={!hasTimelineTopBanner}
-                  {...(threadHistoryControls === undefined
+                  {...(threadHistoryControls === undefined || isPersonalChat
                     ? {}
                     : { historyControls: threadHistoryControls })}
                 />
@@ -3526,11 +3592,25 @@ export default function ChatView(props: ChatViewProps) {
                             : undefined
                         }
                       >
-                        <DraftHeroHeadline
-                          draftId={draftId}
-                          activeProjectRef={activeProjectRef}
-                          activeProjectTitle={activeProject?.title ?? null}
-                        />
+                        {isPersonalChat ? (
+                          <AssistantWelcome />
+                        ) : botConversation ? (
+                          <div className="space-y-3 pb-6 text-center">
+                            <div className="text-4xl" aria-hidden="true">
+                              {botConversation.config.avatar}
+                            </div>
+                            <h1 className="text-2xl font-medium">{botConversation.config.name}</h1>
+                            <p className="text-sm text-muted-foreground">
+                              {botConversation.config.description}
+                            </p>
+                          </div>
+                        ) : (
+                          <DraftHeroHeadline
+                            draftId={draftId}
+                            activeProjectRef={activeProjectRef}
+                            activeProjectTitle={activeProject?.title ?? null}
+                          />
+                        )}
                       </div>
                     </div>
                   ) : null}
@@ -3574,6 +3654,42 @@ export default function ChatView(props: ChatViewProps) {
                               }
                             />
                           ) : null}
+                          <ConversationHandoff
+                            key={routeThreadKey}
+                            unavailable={
+                              !canOperateThread ||
+                              selectedProviderEntry?.enabled !== true ||
+                              !selectedProviderEntry.isAvailable ||
+                              selectedProviderEntry.status !== "ready"
+                            }
+                            active={
+                              isPersonalChat &&
+                              composerMounted &&
+                              clientSettingsHydrated &&
+                              !threadDetailLoading &&
+                              !activeEnvironmentUnavailable
+                            }
+                            target={composerDraftTarget}
+                            targetKey={routeThreadKey}
+                            ready={
+                              canOperateThread &&
+                              !isSendBusy &&
+                              !queuedRunEdit.isEditing &&
+                              !showPlanFollowUpPrompt &&
+                              !isRevertingCheckpoint &&
+                              !activePendingProgress &&
+                              pendingApprovals.length === 0 &&
+                              !needsLoadBalancing &&
+                              !feedbackUploading &&
+                              !isEnvironmentChanging &&
+                              !worktreeSetupBlocksSend &&
+                              !projectCloneSendBlockReason &&
+                              selectedProviderEntry?.enabled === true &&
+                              selectedProviderEntry.isAvailable &&
+                              selectedProviderEntry.status === "ready"
+                            }
+                            onSend={sendConversationHandoffStable}
+                          />
                           {!composerMounted ? null : (
                             <ChatComposer
                               canOperateThread={canOperateThread}
@@ -3813,6 +3929,17 @@ export default function ChatView(props: ChatViewProps) {
                         </div>
                       ) : null}
                     </ComposerSurface.Shell>
+                    {isPersonalChat && isDraftHeroState && (
+                      <AssistantStartActions
+                        hasDraft={composerHasPrompt}
+                        onPrompt={(prompt) => {
+                          useComposerDraftStore
+                            .getState()
+                            .setPrompt(draftId ?? routeThreadRef, prompt);
+                          focusComposerStable();
+                        }}
+                      />
+                    )}
                     <div
                       aria-hidden
                       className="h-[calc(env(safe-area-inset-bottom)+1rem)] sm:h-[calc(env(safe-area-inset-bottom)+1.25rem)]"
@@ -3833,7 +3960,7 @@ export default function ChatView(props: ChatViewProps) {
               />
             ) : null}
 
-            {embedded ? null : (
+            {embedded || hideProjectChrome ? null : (
               <>
                 <BranchRestoreConfirmHost
                   threadKey={activeThreadKey}
@@ -3940,69 +4067,74 @@ export default function ChatView(props: ChatViewProps) {
         )}
       </div>
 
-      {rightPanelPresent && activeThreadRef && !embedded ? (
-        <ChatRightPanel
-          sheet={shouldUsePlanSidebarSheet}
-          workspaceLayoutElement={workspaceLayoutElement}
-          widthStorageKey={`t3code:preview-panel-width:${activeThreadKey}`}
-          sheetAnimationDurationMs={panelAnimationsActive ? panelAnimationDurationMs : 0}
-          onCloseSheet={closePreviewPanelStable}
-          open={rightPanelOpen}
-          keybindings={keybindings}
-          getShortcutContext={getShortcutContextStable}
-          maximized={rightPanelMaximized}
-          layoutControls={
-            rightPanelOpen ? (
-              <div className="mr-px flex items-center gap-1">
-                <RightPanelMaximizeControl
-                  maximized={rightPanelMaximized}
-                  onToggle={toggleRightPanelMaximizedStable}
-                />
-                {panelToggleControls}
-              </div>
-            ) : null
-          }
-          surfaces={renderedRightPanelSurfaces}
-          environmentId={activeThreadRef.environmentId}
-          activeSurfaceId={renderedRightPanelSurface?.id ?? null}
-          pendingSurfaceIds={pendingFileSurfaceIds}
-          previewSessions={activePreviewState.sessions}
-          desktopByTabId={activePreviewState.desktopByTabId}
-          previewRuntimeTabId={resolvePreviewRuntimeTabId}
-          terminalLabelsById={activeTerminalLabelsById}
-          onActivate={activateRightPanelSurfaceStable}
-          onCloseSurface={closeRightPanelSurfaceStable}
-          onRenameDevice={(surfaceId, title) => {
-            if (activeThreadRef)
-              useRightPanelStore.getState().renameDevice(activeThreadRef, surfaceId, title);
-          }}
-          onCloseOtherSurfaces={closeOtherRightPanelSurfacesStable}
-          onCloseSurfacesToRight={closeRightPanelSurfacesToRightStable}
-          onCloseAllSurfaces={closeAllRightPanelSurfacesStable}
-          onMoveSurface={moveRightPanelSurfaceStable}
-          onCopyFilePath={copyRightPanelFilePathStable}
-          onAddBrowser={() => createBrowserSurface()}
-          onAddBrowserInProfile={createBrowserSurfaceStable}
-          onAddTerminal={addTerminalSurfaceStable}
-          onAddDiff={addDiffSurfaceStable}
-          onAddFiles={addFilesSurfaceStable}
-          onAddPullRequest={addPullRequestSurfaceStable}
-          onAddPullRequests={addPullRequestsSurfaceStable}
-          onAddDevice={addDeviceSurfaceStable}
-          onAddSideChat={sideChatsOffered ? openSideChatStable : undefined}
-          browserAvailable={canOperatePreview && browserAvailable}
-          terminalAvailable={activeProject !== null && canOperateTerminal}
-          diffAvailable={isServerThread && isGitRepo}
-          filesAvailable={activeProject !== null}
-          pullRequestAvailable={pullRequestSurfaceAvailable}
-          pullRequestsAvailable={pullRequestsSurfaceAvailable}
-          deviceAvailable={activeThreadRef !== null}
-          sideChatAvailable={sideChat.available}
-          sideChatDisabledReason={sideChatDisabledReason}
-        >
-          {rightPanelContent}
-        </ChatRightPanel>
-      ) : null}
+      {(rightPanelPresent || (companionHost && rightPanelState.surfaces.length > 0)) &&
+      activeThreadRef &&
+      !embedded
+        ? renderPanel(
+            <ChatRightPanel
+              embedded={Boolean(companionHost)}
+              sheet={shouldUsePlanSidebarSheet}
+              workspaceLayoutElement={workspaceLayoutElement}
+              widthStorageKey={`t3code:preview-panel-width:${activeThreadKey}`}
+              sheetAnimationDurationMs={panelAnimationsActive ? panelAnimationDurationMs : 0}
+              onCloseSheet={closePreviewPanelStable}
+              open={rightPanelOpen}
+              keybindings={keybindings}
+              getShortcutContext={getShortcutContextStable}
+              maximized={rightPanelMaximized}
+              layoutControls={
+                !companionHost && rightPanelOpen ? (
+                  <div className="mr-px flex items-center gap-1">
+                    <RightPanelMaximizeControl
+                      maximized={rightPanelMaximized}
+                      onToggle={toggleRightPanelMaximizedStable}
+                    />
+                    {panelToggleControls}
+                  </div>
+                ) : null
+              }
+              surfaces={renderedRightPanelSurfaces}
+              environmentId={activeThreadRef.environmentId}
+              activeSurfaceId={renderedRightPanelSurface?.id ?? null}
+              pendingSurfaceIds={pendingFileSurfaceIds}
+              previewSessions={activePreviewState.sessions}
+              desktopByTabId={activePreviewState.desktopByTabId}
+              previewRuntimeTabId={resolvePreviewRuntimeTabId}
+              terminalLabelsById={activeTerminalLabelsById}
+              onActivate={activateRightPanelSurfaceStable}
+              onCloseSurface={closeRightPanelSurfaceStable}
+              onRenameDevice={(surfaceId, title) => {
+                if (activeThreadRef)
+                  useRightPanelStore.getState().renameDevice(activeThreadRef, surfaceId, title);
+              }}
+              onCloseOtherSurfaces={closeOtherRightPanelSurfacesStable}
+              onCloseSurfacesToRight={closeRightPanelSurfacesToRightStable}
+              onCloseAllSurfaces={closeAllRightPanelSurfacesStable}
+              onMoveSurface={moveRightPanelSurfaceStable}
+              onCopyFilePath={copyRightPanelFilePathStable}
+              onAddBrowser={() => createBrowserSurface()}
+              onAddBrowserInProfile={createBrowserSurfaceStable}
+              onAddTerminal={addTerminalSurfaceStable}
+              onAddDiff={addDiffSurfaceStable}
+              onAddFiles={addFilesSurfaceStable}
+              onAddPullRequest={addPullRequestSurfaceStable}
+              onAddPullRequests={addPullRequestsSurfaceStable}
+              onAddDevice={addDeviceSurfaceStable}
+              onAddSideChat={sideChatsOffered ? openSideChatStable : undefined}
+              browserAvailable={canOperatePreview && browserAvailable}
+              terminalAvailable={activeProject !== null && canOperateTerminal}
+              diffAvailable={isServerThread && isGitRepo}
+              filesAvailable={activeProject !== null}
+              pullRequestAvailable={pullRequestSurfaceAvailable}
+              pullRequestsAvailable={pullRequestsSurfaceAvailable}
+              deviceAvailable={activeThreadRef !== null}
+              sideChatAvailable={sideChat.available}
+              sideChatDisabledReason={sideChatDisabledReason}
+            >
+              {rightPanelContent}
+            </ChatRightPanel>,
+          )
+        : null}
 
       <RevertConfirmHost threadKey={routeThreadKey} onConfirm={onConfirmRevertStable} />
       {embedded ? null : <LinkPullRequestDialogHost />}

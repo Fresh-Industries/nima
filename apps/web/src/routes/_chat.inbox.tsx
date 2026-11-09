@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ConversationList } from "../nima/Workspace";
+import { WorkspaceInbox } from "../nima/Inbox";
 
 export const Route = createFileRoute("/_chat/inbox")({
-  component: () => <ConversationList inbox />,
+  component: () => <WorkspaceInbox />,
 });

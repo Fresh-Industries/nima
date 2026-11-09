@@ -117,6 +117,16 @@ it.effect("preserves a due run when a save only pads the scheduled hour", () =>
       expect(rescheduled.task.nextRunAt).toBe(
         DateTime.formatIso(DateTime.toUtc(DateTime.add(dueAt, { minutes: 30 }))),
       );
+      const zoned = yield* service.upsert({
+        ...update,
+        schedule: { type: "fixed_time", timeOfDay: "09:00", timeZone: "America/Chicago" },
+      });
+      const olderClientEdit = yield* service.upsert({
+        ...update,
+        title: "Edited on another client",
+      });
+      expect(olderClientEdit.task.schedule).toEqual(zoned.task.schedule);
+      expect(olderClientEdit.task.nextRunAt).toBe(zoned.task.nextRunAt);
     }).pipe(Effect.provide(ScheduledTaskService.layer.pipe(Layer.provide(layerDependencies))));
   }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
 );

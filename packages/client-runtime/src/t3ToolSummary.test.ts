@@ -1,12 +1,44 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { summarizeT3ToolCalls, type T3ToolSummaryCall } from "./t3ToolSummary.ts";
+import {
+  scheduledTaskResultId,
+  summarizeT3ToolCalls,
+  type T3ToolSummaryCall,
+} from "./t3ToolSummary.ts";
 
 function completed(input: unknown, output?: unknown): T3ToolSummaryCall {
   return { input, output, outcome: "completed" };
 }
 
 describe("summarizeT3ToolCalls", () => {
+  it("links only successful scheduling results, including wrapped and compacted provider output", () => {
+    const output = { scheduledTaskId: "bot-one" };
+    for (const value of [
+      output,
+      { structuredContent: output },
+      { content: [{ type: "text", text: JSON.stringify(output) }] },
+    ]) {
+      expect(scheduledTaskResultId("schedule_task", completed({ prompt: "Research" }, value))).toBe(
+        "bot-one",
+      );
+      expect(
+        scheduledTaskResultId(
+          "schedule_task",
+          completed({ scheduledTaskId: "bot-one", enabled: false }, value),
+        ),
+      ).toBe("bot-one");
+    }
+    for (const call of [
+      { ...completed({}, output), outcome: "unfinished" as const },
+      { ...completed({}, output), outcome: "failed" as const },
+      completed({}, { isError: true, structuredContent: output }),
+      completed({}, { error: "Could not save", ...output }),
+      completed({ scheduledTaskId: "input-is-not-proof" }),
+      completed({}, "malformed"),
+    ])
+      expect(scheduledTaskResultId("schedule_task", call)).toBeUndefined();
+    expect(scheduledTaskResultId("other_tool", completed({}, output))).toBeUndefined();
+  });
   it("reads provider result envelopes without treating JSON in the message as result data", () => {
     const result = { messageId: "message-1", threadId: "actual-thread" };
     const json = JSON.stringify(result);

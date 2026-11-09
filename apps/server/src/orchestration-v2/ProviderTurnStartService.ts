@@ -1,3 +1,6 @@
+import * as PersonalAgent from "../personalAgent/PersonalAgent.ts";
+import * as BotStore from "../bots/BotStore.ts";
+import { retryProviderPreparation } from "../bots/retryProviderPreparation.ts";
 import { modelSelectionsEqual } from "@t3tools/shared/model";
 import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
 import {
@@ -145,12 +148,15 @@ export const layer: Layer.Layer<
   | ProviderSessionManager.ProviderSessionManagerV2
   | RunExecutionService.RunExecutionServiceV2
   | RuntimePolicy.RuntimePolicyV2
+  | PersonalAgent.PersonalAgent
 > = Layer.effect(
   ProviderTurnStartServiceV2,
   Effect.gen(function* () {
     const eventSink = yield* EventSink.EventSinkV2;
     const turnAnalytics = yield* ProviderUsageAnalytics.ProviderTurnAnalytics;
     const contextHandoffService = yield* ContextHandoffService.ContextHandoffServiceV2;
+    const personalAgent = yield* PersonalAgent.PersonalAgent;
+    const botStore = yield* Effect.serviceOption(BotStore.BotStore);
     const idAllocator = yield* IdAllocator.IdAllocatorV2;
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
@@ -828,11 +834,22 @@ export const layer: Layer.Layer<
         return;
       }
       const session = sessionResult.success;
+      const botPolicies = Option.isSome(botStore)
+        ? yield* botStore.value
+            .policiesForThread(projection.thread.id)
+            .pipe(Effect.mapError((cause) => new ProviderTurnStartError({ runId, cause })))
+        : [];
+      const retryLimits = botPolicies.flatMap((bot) =>
+        bot.config.capabilities?.maxPreparationRetries === undefined
+          ? []
+          : [bot.config.capabilities.maxPreparationRetries],
+      );
+      const preparationRetries = retryLimits.length ? Math.min(...retryLimits) : 0;
       if (!(yield* isCurrentAttemptInStatus("starting"))) return;
       const loadFromProvider = Effect.fn("ProviderTurnStartService.loadFromProvider")(function* (
         load: Effect.Effect<OrchestrationV2ProviderThread, ProviderAdapter.ProviderAdapterV2Error>,
       ) {
-        const loaded = yield* Effect.result(load);
+        const loaded = yield* Effect.result(retryProviderPreparation(load, preparationRetries));
         if (loaded._tag === "Success") return loaded.success;
         if (input.willRetry === true) return yield* loaded.failure;
         yield* settleStartFailure({
@@ -1149,7 +1166,11 @@ export const layer: Layer.Layer<
           const sourceBusy = sourceProjection.runs.some(
             (candidate) => candidate.ordinal > sourceRun.ordinal && isActiveRun(candidate),
           );
-          if (!sourceBusy) {
+          if (
+            !sourceBusy &&
+            sourceProjection.thread.projectId === projection.thread.projectId &&
+            (yield* personalAgent.canForkNative(nativeForkTransfer.sourceThreadId))
+          ) {
             return yield* loadFromProvider(
               session.forkThread({
                 sourceProviderThread,
@@ -1585,7 +1606,17 @@ export const layer: Layer.Layer<
             sideChatHandoff === undefined || compact || goalCommand
               ? ""
               : sideChatHandoff.summaryText;
-          const context = [delivery.context, sideChatContext, restartNote]
+          const memoryContext =
+            compact || goalCommand
+              ? ""
+              : yield* personalAgent
+                  .prepare({
+                    threadId: projection.thread.id,
+                    messageId: message.id,
+                    prompt: message.text,
+                  })
+                  .pipe(Effect.mapError((cause) => new ProviderTurnStartError({ runId, cause })));
+          const context = [delivery.context, sideChatContext, restartNote, memoryContext]
             .filter((part) => part !== "")
             .join("\n\n");
           const { restartContinuationOfRunId: _resumedRunId, ...promptedInput } = turnInput;

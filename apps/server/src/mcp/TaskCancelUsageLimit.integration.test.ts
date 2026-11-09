@@ -1,3 +1,4 @@
+import * as BotDelegation from "../bots/BotDelegation.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
@@ -174,6 +175,13 @@ it.effect.each([
         );
         const layerTest = Layer.merge(
           OrchestratorMcpService.layer.pipe(
+            Layer.provide(
+              Layer.succeed(BotDelegation.BotDelegation, {
+                reserve: () => Effect.succeed(null),
+                reconcile: () => Effect.void,
+                assertLocal: () => Effect.void,
+              }),
+            ),
             Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
             Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
           ),

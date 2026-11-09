@@ -485,6 +485,7 @@ const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolv
     input: SharedBootstrapInput & {
       readonly resourceMonitorPath: Option.Option<string>;
       readonly cliPath: Option.Option<string>;
+      readonly studioCliPath: Option.Option<string>;
       readonly shellEnvironmentPrepared: boolean;
     },
   ): Effect.fn.Return<
@@ -534,6 +535,9 @@ const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolv
         ELECTRON_RUN_AS_NODE: "1",
         T3CODE_DESKTOP_SHELL_DISCOVERY_PENDING: "1",
         T3CODE_CLI_PATH: Option.getOrUndefined(input.cliPath),
+        ...(Option.isSome(input.studioCliPath) && !process.env.BARA_STUDIO_CLI
+          ? { BARA_STUDIO_CLI: input.studioCliPath.value }
+          : {}),
       },
       extendEnv: true,
       bootstrap,
@@ -775,6 +779,15 @@ export const make = Effect.gen(function* () {
 
   const buildWindowsPrimaryConfig = Effect.gen(function* () {
     const shared = yield* sharedInputs;
+    const studioBinary = environment.path.join(
+      environment.resourcesPath,
+      "studio",
+      environment.platform === "win32" ? "bara-cli.exe" : "bara-cli",
+    );
+    const studioCliPath =
+      environment.isPackaged && (yield* fileSystem.exists(studioBinary))
+        ? Option.some(studioBinary)
+        : Option.none<string>();
     const resourceMonitorPath = yield* resolveResourceMonitorPath().pipe(
       Effect.provideService(FileSystem.FileSystem, fileSystem),
       Effect.provideService(DesktopEnvironment.DesktopEnvironment, environment),
@@ -788,6 +801,7 @@ export const make = Effect.gen(function* () {
       ...shared,
       resourceMonitorPath,
       cliPath,
+      studioCliPath,
       shellEnvironmentPrepared,
     }).pipe(
       Effect.provideService(DesktopEnvironment.DesktopEnvironment, environment),

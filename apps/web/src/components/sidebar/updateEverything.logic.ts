@@ -147,7 +147,7 @@ export interface ChannelSwitchRelease {
   readonly databaseMigration: number | undefined;
 }
 
-export const channelSwitchLabel = (channel: DesktopUpdateChannel) =>
+const channelSwitchLabel = (channel: DesktopUpdateChannel) =>
   channel === "nightly" ? "Nightly" : "Stable";
 
 /** Stable and Nightly each build their own commits, so either can hold migrations the other lacks.
@@ -304,20 +304,6 @@ export function collectChannelSwitchTargets(
     targets.push(target(move.selfUpdate, release.version));
   }
   return { targets, skipped };
-}
-
-/** A remote host on the other track that a switch can still move, for retrying a partial switch. */
-export function awaitsTrackSwitch(
-  machine: Pick<UpdateEverythingMachine, "serverConfig" | "hostedByThisApp">,
-  channel: DesktopUpdateChannel,
-): boolean {
-  const config = machine.serverConfig;
-  return (
-    !machine.hostedByThisApp &&
-    config !== null &&
-    !isOnTrack(config.environment.serverVersion, channel) &&
-    !("skip" in trackSwitchMove(config, false))
-  );
 }
 
 function isOnTrack(version: string, channel: DesktopUpdateChannel): boolean {

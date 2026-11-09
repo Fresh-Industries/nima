@@ -1,4 +1,4 @@
-import { NimaFrame } from "../nima/Workspace";
+import { BaraFrame } from "../nima/Shell";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { Outlet, createFileRoute, redirect, useMatches } from "@tanstack/react-router";
 import { useState } from "react";
@@ -30,7 +30,7 @@ function ChatRouteLayout() {
   }
   const shownTarget = modalOpen ? backgroundTarget : threadTarget;
   return (
-    <NimaFrame>
+    <BaraFrame>
       {shownTarget?.kind === "server" && !modalOpen ? (
         <ThreadLinkPrompt threadRef={shownTarget.threadRef} />
       ) : null}
@@ -42,7 +42,7 @@ function ChatRouteLayout() {
         <Outlet />
       )}
       {modalOpen ? <Outlet /> : null}
-    </NimaFrame>
+    </BaraFrame>
   );
 }
 

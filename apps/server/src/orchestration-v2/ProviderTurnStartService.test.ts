@@ -1,3 +1,6 @@
+import * as BotStore from "../bots/BotStore.ts";
+import { BotId } from "@t3tools/contracts";
+import * as PersonalAgent from "../personalAgent/PersonalAgent.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it, vi } from "vite-plus/test";
@@ -33,6 +36,8 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
 import * as Schema from "effect/Schema";
+import * as SqlClient from "effect/sql/SqlClient";
+import * as Sqlite from "../persistence/Sqlite.ts";
 
 import * as ServerConfig from "../config.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
@@ -132,6 +137,12 @@ function startWithMissingWorktree(
   const createWorktree = vi.fn(() => Effect.succeed({} as never));
   const listLocalBranchNames = vi.fn(() => Effect.succeed(["feature/restore"]));
   const layer = ProviderTurnStart.layer.pipe(
+    Layer.provide(
+      Layer.mock(PersonalAgent.PersonalAgent)({
+        prepare: () => Effect.succeed(""),
+        canForkNative: () => Effect.succeed(true),
+      }),
+    ),
     Layer.provide(
       Layer.mergeAll(
         Layer.mock(ContextHandoffService.ContextHandoffServiceV2)({}),
@@ -269,6 +280,11 @@ it.each([
 
 function makeLocalCommandHarness(input: {
   readonly text: string;
+  readonly personalAgent?: Pick<
+    PersonalAgent.PersonalAgent["Service"],
+    "prepare" | "canForkNative"
+  >;
+  readonly targetDriver?: "codex" | "claudeAgent";
   readonly worktreePath?: string;
   readonly worktreesDir?: string;
   readonly workspaceRoot?: string;
@@ -300,6 +316,7 @@ function makeLocalCommandHarness(input: {
   readonly sideChat?: {
     readonly contextRun: "current" | "failed" | "cancelled" | "delivered";
     readonly nativeForkFrom?: "idle" | "busy";
+    readonly crossProject?: boolean;
     readonly switchedProvider?: boolean;
   };
 }) {
@@ -313,7 +330,7 @@ function makeLocalCommandHarness(input: {
   const providerSessionId = ProviderSessionId.make("new-provider-session");
   const oldProviderThreadId = ProviderThreadId.make("existing-native-provider-thread");
   const oldInstanceId = ProviderInstanceId.make("antigravity-personal");
-  const newInstanceId = ProviderInstanceId.make("codex-personal");
+  const newInstanceId = ProviderInstanceId.make(`${input.targetDriver ?? "codex"}-personal`);
   const checkpointScopeId = CheckpointScopeId.make("scope-native-account-command");
   const messageId = MessageId.make("message-native-account-command");
   const run: OrchestrationV2ThreadProjection["runs"][number] = {
@@ -335,7 +352,7 @@ function makeLocalCommandHarness(input: {
   };
   const providerThread: OrchestrationV2ThreadProjection["providerThreads"][number] = {
     id: providerThreadId,
-    driver: ProviderDriverKind.make("codex"),
+    driver: ProviderDriverKind.make(input.targetDriver ?? "codex"),
     providerInstanceId: newInstanceId,
     providerSessionId,
     appThreadId: threadId,
@@ -490,7 +507,11 @@ function makeLocalCommandHarness(input: {
   };
   const parentRecords = {
     ...projection,
-    thread: { ...projection.thread, id: parentThreadId },
+    thread: {
+      ...projection.thread,
+      id: parentThreadId,
+      ...(input.sideChat?.crossProject ? { projectId: ProjectId.make("other-project") } : {}),
+    },
     runs: [
       {
         ...run,
@@ -868,6 +889,14 @@ function makeLocalCommandHarness(input: {
     }),
   );
   const layer = ProviderTurnStart.layer.pipe(
+    Layer.provide(
+      Layer.mock(PersonalAgent.PersonalAgent)(
+        input.personalAgent ?? {
+          prepare: () => Effect.succeed(""),
+          canForkNative: () => Effect.succeed(true),
+        },
+      ),
+    ),
     Layer.provide(
       Layer.mergeAll(
         Layer.mock(ContextHandoffService.ContextHandoffServiceV2)({
@@ -1253,8 +1282,139 @@ effectIt.effect.each([
     }),
 );
 
+effectIt.effect(
+  "prepares fresh scoped memory across provider switches without saving injected blocks into chat or handoffs",
+  () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const agent = yield* PersonalAgent.PersonalAgent;
+      const threadId = ThreadId.make("thread-native-account-command");
+      const at = "2026-11-05T12:00:00.000Z";
+      yield* sql`INSERT INTO projection_projects(project_id,title,workspace_root,scripts_json,created_at,updated_at) VALUES('project-native-account-command','Test','/tmp/test','[]',${at},${at})`;
+      yield* sql`INSERT INTO orchestration_v2_projection_threads(thread_id,project_id,title,default_provider,runtime_mode,interaction_mode,created_at,updated_at,payload_json) VALUES(${threadId},'project-native-account-command','Assistant','codex','full-access','default',${at},${at},'{}')`;
+      yield* agent.claimConversation(threadId);
+      const input = {
+        scope: { kind: "personal" as const },
+        key: "language",
+        content: "OLD_RUBY_PREFERENCE",
+        expectedRevision: 0,
+        action: "remember" as const,
+        sources: [],
+      };
+      yield* agent.remember(input, { kind: "owner" });
+      for (const [index, targetDriver] of (["codex", "claudeAgent"] as const).entries()) {
+        if (index === 1)
+          yield* agent.remember(
+            { ...input, content: "CURRENT_TYPESCRIPT_PREFERENCE", expectedRevision: 1 },
+            { kind: "owner" },
+          );
+        const harness = makeLocalCommandHarness({
+          text: "Which language should we use?",
+          personalAgent: agent,
+          targetDriver,
+          sideChat: {
+            contextRun: index === 0 ? "current" : "failed",
+            switchedProvider: index === 1,
+          },
+        });
+        yield* harness.start;
+        const turn = harness.startTurn.mock.calls[0]![0];
+        expect(turn.message.text).toContain(
+          index === 0 ? "OLD_RUBY_PREFERENCE" : "CURRENT_TYPESCRIPT_PREFERENCE",
+        );
+        if (index === 1) expect(turn.message.text).not.toContain("OLD_RUBY_PREFERENCE");
+        expect(harness.projection().messages[0]?.text).toBe("Which language should we use?");
+        expect(harness.projection().contextHandoffs[0]?.summaryText).toBe("SIDE_CHAT_CONTEXT");
+        expect(harness.open).toHaveBeenCalledWith(
+          expect.objectContaining({
+            modelSelection: expect.objectContaining({
+              instanceId: ProviderInstanceId.make(`${targetDriver}-personal`),
+            }),
+          }),
+        );
+      }
+    }).pipe(Effect.provide(PersonalAgent.layer.pipe(Layer.provideMerge(Sqlite.layerMemory)))),
+);
+
+effectIt.effect.each(["relationship", "work"] as const)(
+  "prepares teammate $0 configuration on Codex and Claude without importing personal memory or changing stored chat",
+  (kind) =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const agent = yield* PersonalAgent.PersonalAgent;
+      const bots = yield* BotStore.BotStore;
+      const bot = yield* bots.create({
+        id: BotId.make("chef"),
+        name: "Chef",
+        description: "Help me cook",
+      });
+      const at = "2026-11-05T12:00:00.000Z";
+      const threadId = ThreadId.make("thread-native-account-command");
+      yield* sql`INSERT INTO projection_projects(project_id,title,workspace_root,scripts_json,created_at,updated_at) VALUES('project-native-account-command','Test','/tmp/test','[]',${at},${at})`;
+      yield* sql`INSERT INTO orchestration_v2_projection_threads(thread_id,project_id,title,default_provider,runtime_mode,interaction_mode,created_at,updated_at,payload_json) VALUES(${threadId},'project-native-account-command','Chef','codex','full-access','default',${at},${at},'{}')`;
+      if (kind === "relationship")
+        yield* sql`UPDATE workspace_bots SET thread_id=${threadId} WHERE bot_id=${bot.id}`;
+      else
+        yield* sql`INSERT INTO workspace_thread_metadata(thread_id,kind,title,objective,updated_at,coordinator_bot_id,scope_project_id,configuration_revision) VALUES(${threadId},'focus','Dinner','Suggest dinner',${at},${bot.id},NULL,1)`;
+      yield* agent.remember(
+        {
+          scope: { kind: "personal" },
+          key: "private",
+          content: "PRIVATE_OWNER_FACT",
+          expectedRevision: 0,
+          action: "remember",
+          sources: [],
+        },
+        { kind: "owner" },
+      );
+      for (const [index, targetDriver] of (["codex", "claudeAgent"] as const).entries()) {
+        const current = yield* bots.get(bot.id);
+        yield* bots.write({
+          id: bot.id,
+          config: {
+            ...current.config,
+            instructions: index === 0 ? "OLD_CHEF_INSTRUCTIONS" : "CURRENT_CHEF_INSTRUCTIONS",
+          },
+          archived: false,
+          expectedRevision: current.revision,
+        });
+        const harness = makeLocalCommandHarness({
+          text: "Suggest dinner",
+          personalAgent: agent,
+          targetDriver,
+          sideChat: {
+            contextRun: index === 0 ? "current" : "failed",
+            switchedProvider: index === 1,
+          },
+        });
+        yield* harness.start;
+        const turn = harness.startTurn.mock.calls[0]![0];
+        expect(turn.message.text).toContain(
+          index === 0 ? "OLD_CHEF_INSTRUCTIONS" : "CURRENT_CHEF_INSTRUCTIONS",
+        );
+        if (index === 1) expect(turn.message.text).not.toContain("OLD_CHEF_INSTRUCTIONS");
+        expect(turn.message.text).not.toContain("PRIVATE_OWNER_FACT");
+        expect(harness.projection().messages[0]?.text).toBe("Suggest dinner");
+      }
+    }).pipe(Effect.provide(PersonalAgent.layer.pipe(Layer.provideMerge(Sqlite.layerMemory)))),
+);
+
 effectIt.effect.each([
   { nativeForkFrom: "idle", forks: true, transferStatus: "consumed", handoffIds: [] },
+  {
+    nativeForkFrom: "idle",
+    crossProject: true,
+    forks: false,
+    transferStatus: "resolved_portable",
+    handoffIds: ["side-chat-fork-context"],
+  },
+  {
+    nativeForkFrom: "idle",
+    privateMemory: true,
+    forks: false,
+    transferStatus: "resolved_portable",
+    handoffIds: ["side-chat-fork-context"],
+  },
   {
     nativeForkFrom: "busy",
     forks: false,
@@ -1263,11 +1423,23 @@ effectIt.effect.each([
   },
 ] as const)(
   "runs a planned native side chat fork when the parent is $nativeForkFrom",
-  ({ nativeForkFrom, forks, transferStatus, handoffIds }) =>
+  ({ nativeForkFrom, forks, transferStatus, handoffIds, ...options }) =>
     Effect.gen(function* () {
       const harness = makeLocalCommandHarness({
         text: "What is the main thread doing?",
-        sideChat: { contextRun: "current", nativeForkFrom },
+        sideChat: {
+          contextRun: "current",
+          nativeForkFrom,
+          ...("crossProject" in options ? { crossProject: true } : {}),
+        },
+        ...("privateMemory" in options
+          ? {
+              personalAgent: {
+                prepare: () => Effect.succeed(""),
+                canForkNative: () => Effect.succeed(false),
+              },
+            }
+          : {}),
       });
 
       yield* harness.start;

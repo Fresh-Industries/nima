@@ -1,4 +1,9 @@
+import * as WorkSessions from "../workspace/WorkSessions.ts";
+import * as BotStore from "../bots/BotStore.ts";
+import { BotId } from "@t3tools/contracts";
 import * as DocumentText from "../provider/DocumentText.ts";
+import * as AssistantConversation from "../personalAgent/AssistantConversation.ts";
+import * as PersonalAgent from "../personalAgent/PersonalAgent.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as WorktreeSetupTracker from "../project/WorktreeSetupTracker.ts";
 import * as ProjectCloneTracker from "../project/ProjectCloneTracker.ts";
@@ -312,6 +317,136 @@ function launchInput(input: {
     creationSource: "web" as const,
   };
 }
+
+it.effect(
+  "opens one idle canonical assistant through real T3 launch and recovers it on reconnect",
+  () => {
+    const harness = makeHarness({
+      providers: [
+        {
+          instanceId: modelSelection.instanceId,
+          driver: ProviderDriverKind.make("codex"),
+          status: "ready",
+          enabled: true,
+          installed: true,
+          auth: { status: "authenticated" },
+          checkedAt: project.createdAt,
+          version: "test",
+          models: [
+            { slug: modelSelection.model, name: "Test", isCustom: false, capabilities: null },
+            { slug: "gpt-6.1-sol", name: "GPT-6.1 Sol", isCustom: false, capabilities: null },
+          ],
+          skills: [],
+          slashCommands: [],
+        },
+      ],
+      managedFolders: Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+        namedProjectsRoot: "/projects",
+        ensureScratchProject: Effect.succeed({ projectId }),
+        isScratchProject: () => Effect.succeed(false),
+        folderForThread: () => Effect.succeedNone,
+      }),
+    });
+    const layer = AssistantConversation.layer.pipe(
+      Layer.provideMerge(PersonalAgent.layer),
+      Layer.provideMerge(harness.layer),
+    );
+    return Effect.gen(function* () {
+      const assistant = yield* AssistantConversation.AssistantConversation;
+      const results = yield* Effect.all(
+        [assistant.open({}), assistant.open({}), assistant.open({})],
+        { concurrency: "unbounded" },
+      );
+      const id = results[0]!.threadId!;
+      assert.deepEqual(
+        results.map((result) => result.threadId),
+        [id, id, id],
+      );
+      assert.equal((yield* assistant.open({})).threadId, id);
+      const records = yield* (yield* ThreadManagement.ThreadManagementService).getThreadRecords(
+        id,
+        ["runs", "messages"],
+      );
+      assert.equal(records.thread.title, "Citrus");
+      assert.deepEqual(records.thread.modelSelection, {
+        instanceId: modelSelection.instanceId,
+        model: "gpt-6.1-sol",
+        options: [{ id: "reasoningEffort", value: "xhigh" }],
+      });
+      assert.equal(records.runs.length, 0);
+      assert.equal(records.messages.length, 0);
+      yield* (yield* ThreadManagement.ThreadManagementService).dispatch({
+        type: "thread.model-selection.set",
+        commandId: CommandId.make("test:personal-explicit-model"),
+        threadId: id,
+        modelSelection,
+      });
+      yield* assistant.open({});
+      assert.deepEqual(
+        (yield* (yield* ThreadManagement.ThreadManagementService).getThreadShell(id))
+          ?.modelSelection,
+        modelSelection,
+      );
+      yield* (yield* ThreadManagement.ThreadManagementService).dispatch({
+        type: "thread.archive",
+        commandId: CommandId.make("test:archive-assistant"),
+        threadId: id,
+      });
+      assert.equal((yield* assistant.open({})).threadId, id);
+      assert.isNull(
+        (yield* (yield* ThreadManagement.ThreadManagementService).getThreadShell(id))?.archivedAt,
+      );
+      const sql = yield* SqlClient.SqlClient;
+      assert.equal(
+        (yield* sql<{
+          count: number;
+        }>`SELECT count(*) AS count FROM orchestration_v2_projection_threads WHERE deleted_at IS NULL`)[0]
+          ?.count,
+        1,
+      );
+      assert.equal(
+        (yield* sql<{
+          kind: string;
+        }>`SELECT kind FROM workspace_thread_metadata WHERE thread_id=${id}`)[0]?.kind,
+        "assistant",
+      );
+      const bots = yield* BotStore.BotStore;
+      const chef = yield* bots.create({
+        id: BotId.make("chef"),
+        name: "Chef",
+        description: "Help me cook",
+      });
+      const configured = yield* bots.write({
+        id: chef.id,
+        config: { ...chef.config, modelSelection },
+        archived: false,
+        expectedRevision: chef.revision,
+      });
+      assert.equal(configured.status, "saved");
+      const opened = yield* assistant.openBot({ id: chef.id });
+      assert.notEqual(opened.threadId, id);
+      const chefRecords = yield* (yield* ThreadManagement.ThreadManagementService).getThreadRecords(
+        opened.threadId!,
+        ["runs", "messages"],
+      );
+      assert.deepEqual(chefRecords.thread.modelSelection, modelSelection);
+      assert.equal(chefRecords.runs.length, 0);
+      assert.equal((yield* assistant.openBot({ id: chef.id })).threadId, opened.threadId);
+      yield* (yield* ThreadManagement.ThreadManagementService).dispatch({
+        type: "thread.model-selection.set",
+        commandId: CommandId.make("chef-switch-model"),
+        threadId: opened.threadId!,
+        modelSelection: { ...modelSelection, model: "gpt-6.1-sol" },
+      });
+      yield* assistant.openBot({ id: chef.id });
+      assert.equal(
+        (yield* (yield* ThreadManagement.ThreadManagementService).getThreadShell(opened.threadId!))
+          ?.modelSelection.model,
+        "gpt-6.1-sol",
+      );
+    }).pipe(Effect.provide(layer));
+  },
+);
 
 it.effect.each(
   (["new", "existing"] as const).flatMap((target) =>
@@ -2416,3 +2551,197 @@ it.effect("replays an accepted send after the project disables the instance", ()
     }
   }).pipe(Effect.provide(Layer.mergeAll(harness.layer, layerFiles)));
 });
+
+it.effect(
+  "does not substitute an unrelated repository when a Bot's independent workspace is unavailable",
+  () => {
+    const harness = makeHarness({
+      managedFolders: Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+        namedProjectsRoot: "/projects",
+        ensureScratchProject: Effect.fail(new ManagedProjectFolders.ScratchUnavailableError()),
+      }),
+    });
+    const layer = AssistantConversation.layer.pipe(
+      Layer.provideMerge(PersonalAgent.layer),
+      Layer.provideMerge(harness.layer),
+    );
+    return Effect.gen(function* () {
+      const bots = yield* BotStore.BotStore;
+      const chef = yield* bots.create({
+        id: BotId.make("chef"),
+        name: "Chef",
+        description: "Help with meals",
+      });
+      const service = yield* AssistantConversation.AssistantConversation;
+      assert.equal(
+        (yield* service.openBot({ id: chef.id }).pipe(Effect.flip)).reason,
+        "workspace-unavailable",
+      );
+      const sql = yield* SqlClient.SqlClient;
+      assert.equal(
+        (yield* sql<{
+          count: number;
+        }>`SELECT count(*) AS count FROM orchestration_v2_projection_threads`)[0]?.count,
+        0,
+      );
+    }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "creates project-free and cross-project Work with one Bot, isolates context, and reopens idempotently without starting execution",
+  () => {
+    const harness = makeHarness({
+      providers: [
+        {
+          instanceId: modelSelection.instanceId,
+          driver: ProviderDriverKind.make("codex"),
+          status: "ready",
+          enabled: true,
+          installed: true,
+          auth: { status: "authenticated" },
+          checkedAt: project.createdAt,
+          version: "test",
+          models: [
+            { slug: modelSelection.model, name: "Test", isCustom: false, capabilities: null },
+          ],
+          skills: [],
+          slashCommands: [],
+        },
+      ],
+      managedFolders: Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+        namedProjectsRoot: "/projects",
+        ensureScratchProject: Effect.succeed({ projectId }),
+        isScratchProject: () => Effect.succeed(false),
+        folderForThread: () => Effect.succeedNone,
+      }),
+    });
+    const layer = WorkSessions.layer.pipe(
+      Layer.provideMerge(PersonalAgent.layer),
+      Layer.provideMerge(harness.layer),
+    );
+    return Effect.gen(function* () {
+      const work = yield* WorkSessions.WorkSessions;
+      const bots = yield* BotStore.BotStore;
+      const memory = yield* PersonalAgent.PersonalAgent;
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const sql = yield* SqlClient.SqlClient;
+      for (const entry of [project, otherProject])
+        yield* sql`INSERT OR IGNORE INTO projection_projects(project_id,title,workspace_root,scripts_json,created_at,updated_at) VALUES(${entry.id},${entry.title},${entry.workspaceRoot},'[]',${entry.createdAt},${entry.updatedAt})`;
+      const lead = yield* bots.create({
+        id: BotId.make("lead"),
+        name: "Engineering Lead",
+        description: "Coordinate engineering",
+      });
+      yield* bots.write({
+        id: lead.id,
+        config: { ...lead.config, modelSelection, instructions: "Prefer small verified changes." },
+        archived: false,
+        expectedRevision: lead.revision,
+      });
+      const first = {
+        threadId: ThreadId.make("checkout-work"),
+        title: "Checkout fix",
+        objective: "Investigate checkout",
+        projectId,
+        coordinatorBotId: lead.id,
+      };
+      const [opened, retry] = yield* Effect.all([work.create(first), work.create(first)], {
+        concurrency: "unbounded",
+      });
+      assert.deepEqual(opened, retry);
+      const second = {
+        ...first,
+        threadId: ThreadId.make("deployment-work"),
+        title: "Deployment fix",
+        objective: "Investigate deploy",
+        projectId: otherProjectId,
+      };
+      yield* work.create(second);
+      const personal = {
+        ...first,
+        threadId: ThreadId.make("trip-work"),
+        title: "Weekend trip",
+        objective: "Plan a trip",
+        projectId: null,
+        coordinatorBotId: null,
+      };
+      yield* work.create(personal);
+      assert.equal((yield* bots.list()).bots.length, 2);
+      assert.equal((yield* bots.workForThread(first.threadId))?.coordinator?.id, lead.id);
+      assert.equal((yield* bots.workForThread(second.threadId))?.coordinator?.id, lead.id);
+      assert.isNull((yield* bots.workForThread(personal.threadId))?.projectId);
+      assert.isNull((yield* bots.get(lead.id)).threadId);
+      const records = yield* threads.getThreadRecords(first.threadId, ["runs", "messages"]);
+      assert.deepEqual(records.thread.modelSelection, modelSelection);
+      assert.lengthOf(records.runs, 0);
+      assert.lengthOf(records.messages, 0);
+      assert.equal(
+        (yield* work.create({ ...first, projectId: otherProjectId }).pipe(Effect.flip)).reason,
+        "changed",
+      );
+      assert.equal(
+        (yield* work
+          .create({
+            ...first,
+            threadId: ThreadId.make("unknown-project"),
+            projectId: ProjectId.make("missing"),
+          })
+          .pipe(Effect.flip)).reason,
+        "unavailable",
+      );
+      const fact = (
+        scope: Parameters<typeof memory.remember>[0]["scope"],
+        key: string,
+        content: string,
+      ) =>
+        memory.remember(
+          { scope, key, content, expectedRevision: 0, action: "remember", sources: [] },
+          { kind: "owner" },
+        );
+      yield* fact({ kind: "personal" }, "private", "PRIVATE_HOME_CONTEXT");
+      yield* fact({ kind: "project", projectId }, "checkout", "CHECKOUT_PROJECT_ONLY");
+      yield* fact({ kind: "project", projectId: otherProjectId }, "deploy", "DEPLOY_PROJECT_ONLY");
+      yield* fact(
+        { kind: "thread", threadId: first.threadId },
+        "private",
+        "PRIVATE_CHECKOUT_SESSION",
+      );
+      const context = (threadId: ThreadId) =>
+        memory.prepare({
+          threadId,
+          messageId: MessageId.make(`test-${threadId}`),
+          prompt: "checkout deploy private",
+        });
+      const a = yield* context(first.threadId),
+        b = yield* context(second.threadId),
+        c = yield* context(personal.threadId);
+      assert.include(a, "Prefer small verified changes.");
+      assert.include(b, "Prefer small verified changes.");
+      assert.include(a, "CHECKOUT_PROJECT_ONLY");
+      assert.notInclude(a, "DEPLOY_PROJECT_ONLY");
+      assert.notInclude(a, "PRIVATE_HOME_CONTEXT");
+      assert.include(b, "DEPLOY_PROJECT_ONLY");
+      assert.notInclude(b, "CHECKOUT_PROJECT_ONLY");
+      assert.notInclude(b, "PRIVATE_CHECKOUT_SESSION");
+      assert.notInclude(c, "CHECKOUT_PROJECT_ONLY");
+      assert.notInclude(c, "PRIVATE_HOME_CONTEXT");
+      assert.isFalse(yield* memory.canForkNative(first.threadId));
+      const current = yield* bots.get(lead.id);
+      yield* bots.write({
+        id: lead.id,
+        config: current.config,
+        archived: true,
+        expectedRevision: current.revision,
+      });
+      assert.include(yield* context(first.threadId), "Engineering Lead");
+      assert.equal(
+        (yield* work
+          .create({ ...first, threadId: ThreadId.make("archived-bot-new-work") })
+          .pipe(Effect.flip)).reason,
+        "unavailable",
+      );
+      assert.lengthOf((yield* threads.getThreadRecords(first.threadId, ["messages"])).messages, 0);
+    }).pipe(Effect.provide(layer));
+  },
+);

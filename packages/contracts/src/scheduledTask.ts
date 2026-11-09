@@ -1,13 +1,19 @@
+import { BotId } from "./bots.ts";
 import * as Schema from "effect/Schema";
+import * as DateTime from "effect/DateTime";
+import * as Option from "effect/Option";
+import { WorkspaceGoalId } from "./workspaceGoals.ts";
 
 import {
   CommandId,
   ForwardCompatibleArray,
   IsoDateTime,
+  MessageId,
   ProjectId,
   ScheduledTaskId,
   SecretRef,
   ThreadId,
+  RunId,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
 import { ModelSelection } from "./modelSelection.ts";
@@ -34,6 +40,15 @@ const ScheduledTaskIntervalSchedule = Schema.Struct({
 const ScheduledTaskFixedTimeSchedule = Schema.Struct({
   type: Schema.Literal("fixed_time"),
   timeOfDay: TimeOfDay,
+  timeZone: Schema.optional(
+    TrimmedNonEmptyString.check(
+      Schema.makeFilter((value) => Option.isSome(DateTime.zoneMakeNamed(value)), {
+        expected: "a valid IANA time zone",
+      }),
+    ).annotate({
+      description: "IANA time zone, such as America/Chicago. Omit for the server's time zone.",
+    }),
+  ),
   weekdays: Schema.optional(
     Schema.Array(
       Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 6 })).annotate({
@@ -232,6 +247,8 @@ export const ScheduledTask = Schema.Struct({
   schedule: ScheduledTaskSchedule,
   projectId: ProjectId,
   threadId: Schema.NullOr(ThreadId),
+  goalId: Schema.optional(Schema.NullOr(WorkspaceGoalId)),
+  ownerBotId: Schema.optional(Schema.NullOr(BotId)),
   workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy,
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
@@ -259,6 +276,35 @@ export const ScheduledTaskListResult = Schema.Struct({
 });
 export type ScheduledTaskListResult = typeof ScheduledTaskListResult.Type;
 
+export const ScheduledTaskRunCursor = Schema.Struct({
+  createdAt: IsoDateTime,
+  messageId: MessageId,
+});
+export type ScheduledTaskRunCursor = typeof ScheduledTaskRunCursor.Type;
+
+export const ScheduledTaskListRunsInput = Schema.Struct({
+  id: ScheduledTaskId,
+  before: Schema.optional(ScheduledTaskRunCursor),
+  limit: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 }))),
+});
+export type ScheduledTaskListRunsInput = typeof ScheduledTaskListRunsInput.Type;
+
+export const ScheduledTaskListRunsResult = Schema.Struct({
+  runs: Schema.Array(
+    Schema.Struct({
+      messageId: MessageId,
+      threadId: ThreadId,
+      threadTitle: Schema.String,
+      runId: Schema.NullOr(RunId),
+      status: Schema.NullOr(Schema.String),
+      createdAt: IsoDateTime,
+      completedAt: Schema.NullOr(IsoDateTime),
+    }),
+  ),
+  nextCursor: Schema.NullOr(ScheduledTaskRunCursor),
+});
+export type ScheduledTaskListRunsResult = typeof ScheduledTaskListRunsResult.Type;
+
 export const ScheduledTaskUpsertInput = Schema.Struct({
   id: Schema.optional(ScheduledTaskId),
   requireExisting: Schema.optional(Schema.Boolean).annotate({
@@ -271,6 +317,14 @@ export const ScheduledTaskUpsertInput = Schema.Struct({
   schedule: ScheduledTaskUpsertSchedule,
   projectId: ProjectId,
   threadId: Schema.optional(Schema.NullOr(ThreadId)),
+  goalId: Schema.optional(Schema.NullOr(WorkspaceGoalId)).annotate({
+    description:
+      "Link a goal check-in to its saved Bara goal. Omit to keep an existing link; null removes it.",
+  }),
+  ownerBotId: Schema.optional(Schema.NullOr(BotId)).annotate({
+    description:
+      "Persistent Bot owning this routine. Omit to preserve ownership; null removes it. Owned routines use a fresh conversation per run.",
+  }),
   workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy,
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,

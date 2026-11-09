@@ -63,27 +63,8 @@ export function resolveDesktopUpdateButtonAction(
   return "none";
 }
 
-export function shouldShowArm64IntelBuildWarning(state: DesktopUpdateState | null): boolean {
-  return state?.hostArch === "arm64" && state.appArch === "x64";
-}
-
 export function isDesktopUpdateButtonDisabled(state: DesktopUpdateState | null): boolean {
   return state?.status === "downloading";
-}
-
-export function getArm64IntelBuildWarningDescription(state: DesktopUpdateState): string {
-  if (!shouldShowArm64IntelBuildWarning(state)) {
-    return "This install is using the correct architecture.";
-  }
-
-  const action = resolveDesktopUpdateButtonAction(state);
-  if (action === "download") {
-    return "This Mac has Apple Silicon, but T3 Code is still running the Intel build under Rosetta. Download the available update to switch to the native Apple Silicon build.";
-  }
-  if (action === "install") {
-    return "This Mac has Apple Silicon, but T3 Code is still running the Intel build under Rosetta. Restart to install the downloaded Apple Silicon build.";
-  }
-  return "This Mac has Apple Silicon, but T3 Code is still running the Intel build under Rosetta. The next app update will replace it with the native Apple Silicon build.";
 }
 
 export function getDesktopUpdateButtonTooltip(state: DesktopUpdateState): string {
@@ -146,7 +127,7 @@ export function canCheckForUpdate(state: DesktopUpdateState | null): boolean {
 }
 
 /** `managedDenial` is this machine's policy refusing updates (`managedUpdatesDenial`); it wins. */
-export function getDesktopUpdateDisabledReason(
+function getDesktopUpdateDisabledReason(
   state: Pick<DesktopUpdateState, "enabled" | "status" | "message"> | null,
   managedDenial?: string,
 ): string | null {

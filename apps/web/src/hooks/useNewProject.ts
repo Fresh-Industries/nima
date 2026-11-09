@@ -8,13 +8,13 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId } from "@t3tools/contracts";
+import { useNavigate } from "@tanstack/react-router";
 
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { waitForProject } from "~/state/entities";
 import { projectEnvironment } from "~/state/projects";
 import { sourceControlEnvironment } from "~/state/sourceControl";
 import { useAtomCommand } from "~/state/use-atom-command";
-import { useNewThreadHandler } from "./useHandleNewThread";
 import { suggestAppAccessForRemote } from "../components/sourceControlAppAccessToast";
 
 function errorMessage(error: unknown): string {
@@ -28,7 +28,7 @@ export function useNewProject() {
   const publishRepository = useAtomCommand(sourceControlEnvironment.publishRepository, {
     reportFailure: false,
   });
-  const handleNewThread = useNewThreadHandler();
+  const navigate = useNavigate();
 
   const publishNewRepository = async (input: {
     readonly environmentId: EnvironmentId;
@@ -110,7 +110,7 @@ export function useNewProject() {
     }
 
     const projectRef = scopeProjectRef(input.environmentId, projectId);
-    // Wait for the stored project path; drafts use it as their key.
+    // Wait for the project snapshot before showing its Work view.
     const project = await waitForProject(projectRef).catch((error: unknown) => {
       toastManager.add(
         stackedThreadToast({
@@ -122,7 +122,10 @@ export function useNewProject() {
       return null;
     });
     if (project === null) return true;
-    await handleNewThread(projectRef).catch((error: unknown) => {
+    await navigate({
+      to: "/work",
+      search: { environmentId: input.environmentId, projectId },
+    }).catch((error: unknown) => {
       toastManager.add(
         stackedThreadToast({
           type: "error",

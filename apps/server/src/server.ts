@@ -1,3 +1,14 @@
+import * as ProjectTeams from "./bots/ProjectTeams.ts";
+import * as BotDelegation from "./bots/BotDelegation.ts";
+import * as BotExecution from "./bots/BotExecution.ts";
+import * as WorkSessions from "./workspace/WorkSessions.ts";
+import * as PersonalAgent from "./personalAgent/PersonalAgent.ts";
+import * as AssistantConversation from "./personalAgent/AssistantConversation.ts";
+import * as WorkspacePages from "./workspace/WorkspacePages.ts";
+import * as Studio from "./studio/Studio.ts";
+import * as WorkspaceGoals from "./workspace/WorkspaceGoals.ts";
+import * as WorkspaceReview from "./workspace/WorkspaceReview.ts";
+import * as WorkspaceNotes from "./workspace/WorkspaceNotes.ts";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
 import type { RelayManagedEndpointRuntimeConfig } from "@t3tools/contracts/relay";
 import * as Random from "effect/Random";
@@ -624,6 +635,13 @@ const layerProviderInstallationRefresh = Layer.effectDiscard(
 );
 
 const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
+  Layer.effectDiscard(
+    BotExecution.BotExecution.pipe(Effect.flatMap((service) => service.start())),
+  ).pipe(Layer.provide(BotExecution.layer)),
+  WorkspaceReview.layer.pipe(
+    Layer.provide(RuntimeLayer.layerEventSink),
+    Layer.provide(layerPersistence),
+  ),
   AgentAwarenessRelay.layer,
   HeldHooksWaker.layer,
   layerThreadSettlementWorker,
@@ -668,6 +686,14 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   ReplayMarkers.layer,
   Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
 ).pipe(
+  Layer.provideMerge(
+    Layer.mergeAll(
+      AssistantConversation.layer,
+      WorkSessions.layer,
+      ProjectTeams.layer,
+      BotDelegation.layer,
+    ),
+  ),
   Layer.provideMerge(layerOrchestrationApplication),
   Layer.provideMerge(RuntimeLayer.layerEventInfrastructure),
   Layer.provideMerge(Layer.merge(ProjectStore.layer, ThreadSearch.layer)),
@@ -677,6 +703,15 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   Layer.provideMerge(layerGit),
   Layer.provideMerge(layerVcs),
   Layer.provideMerge(Layer.mergeAll(layerTerminal, layerPreview, layerDevice)),
+  Layer.provideMerge(WorkspacePages.layer.pipe(Layer.provide(layerPersistence))),
+  Layer.provideMerge(Studio.layer.pipe(Layer.provide(ProcessRunner.layer))),
+  Layer.provideMerge(
+    Layer.merge(
+      WorkspaceNotes.layer.pipe(Layer.provide(layerPersistence)),
+      PersonalAgent.layer.pipe(Layer.provide(layerPersistence)),
+    ),
+  ),
+  Layer.provideMerge(WorkspaceGoals.layer.pipe(Layer.provide(layerPersistence))),
   Layer.provideMerge(layerPersistence),
   Layer.provideMerge(
     Layer.mergeAll(Keybindings.layer, EnvironmentTheme.layer, UsageLimitSources.layer),

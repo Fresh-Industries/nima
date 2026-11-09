@@ -1,3 +1,4 @@
+import * as BotDelegation from "../../../bots/BotDelegation.ts";
 import {
   CommandId,
   MessageId,
@@ -185,102 +186,133 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
                 ),
               )
             : undefined;
-        const modelSelection =
-          input.modelSelection ??
-          launchedModel ??
-          caller?.modelSelection ??
-          (projectDefaults
-            ? resolveNewThreadModelSelection({
-                defaultSelection: projectDefaults.defaultModelSelection,
-                fallbackSelection: projectDefaults.fallbackModelSelection,
-                providers: yield* ProviderRegistry.ProviderRegistry.pipe(
-                  Effect.flatMap((registry) => registry.getProviders),
-                ),
-                settings: projectDefaults,
-                projectId,
-                now: DateTime.toEpochMillis(yield* DateTime.now),
-              }).selection
-            : null) ??
-          undefined;
-        if (modelSelection === undefined)
+        const botDelegation = yield* BotDelegation.BotDelegation;
+        if (input.coordinatorBotId && (caller === undefined || linkOrigin !== undefined))
           return yield* new OrchestratorMcpFailure({
-            code: "invalid_request",
-            message:
-              "Pass modelSelection: the project has no default model. orchestrator_capabilities lists providers and models.",
+            code: "capability_denied",
+            message: "Assign a local Bot from an active Bara conversation.",
           });
-        let startedRuntimeMode =
-          projectDefaults !== undefined && input.runtimeMode === undefined
-            ? yield* resolveRuntimeMode(runtimeMode, projectDefaults.defaultRuntimeMode).pipe(
-                Effect.orElseSucceed(() => runtimeMode),
-              )
-            : runtimeMode;
-        if (!replaying) {
-          const providers = yield* (yield* ProviderRegistry.ProviderRegistry).getProviders;
-          startedRuntimeMode = yield* resolveRuntimeMode(startedRuntimeMode, input.runtimeMode, {
-            modelSelection,
-            supportedRuntimeModes: providers.find(
-              (provider) => provider.instanceId === modelSelection.instanceId,
-            )?.supportedRuntimeModes,
-          });
-        }
-        const result = yield* ThreadMessageIntake.launchThread({
-          commandId,
-          threadId,
-          projectId,
-          title: input.title,
-          modelSelection,
-          runtimeMode: startedRuntimeMode,
-          interactionMode,
-          workspaceStrategy: input.workspaceStrategy ?? { type: "root" },
-          ...(input.message === undefined && attachments.length === 0
-            ? {}
-            : {
-                initialMessage: {
-                  messageId,
-                  ...(caller === undefined ? {} : { senderThreadId: caller.id }),
-                  text: input.message ?? "",
-                  attachments,
-                },
+        return yield* Effect.acquireUseRelease(
+          caller === undefined
+            ? Effect.succeed(null)
+            : botDelegation.reserve({
+                threadId,
+                parentThreadId: caller.id,
+                ...(caller.activeRunId ? { parentRunId: caller.activeRunId } : {}),
+                projectId,
+                ...(input.scratch === true ? { personal: true } : {}),
+                ...(input.coordinatorBotId ? { coordinatorBotId: input.coordinatorBotId } : {}),
+                title: input.title,
+                objective: input.message ?? input.title,
               }),
-          createdBy: "agent",
-          creationSource: "mcp",
-          ...(linkOrigin === undefined ? {} : { linkOrigin }),
-          // Kept only alongside linkOrigin: thread.create drops it otherwise.
-          ...(input.delegatedFrom === undefined ? {} : { delegatedFrom: input.delegatedFrom }),
-        }).pipe(
-          Effect.mapError((error) => {
-            if (error._tag === "AttachmentClaimError") {
-              return new OrchestratorMcpFailure({
-                code: "orchestration_error",
-                message: error.message,
-              });
-            }
-            if (error._tag === "ThreadManagementProviderInstanceDisabledError") {
-              return new OrchestratorMcpFailure({
-                code: "invalid_request",
-                message: error.message,
-              });
-            }
-            // The administrator's ceiling refuses the mode; say so rather than "unavailable".
-            if (error._tag === "ThreadLaunchError" && isAboveCeilingError(error.cause)) {
-              return new OrchestratorMcpFailure({
-                code: "invalid_request",
-                message: error.cause.message,
-              });
-            }
-            return unavailable();
-          }),
+          (preferred) =>
+            Effect.gen(function* () {
+              const modelSelection =
+                input.modelSelection ??
+                launchedModel ??
+                preferred ??
+                caller?.modelSelection ??
+                (projectDefaults
+                  ? resolveNewThreadModelSelection({
+                      defaultSelection: projectDefaults.defaultModelSelection,
+                      fallbackSelection: projectDefaults.fallbackModelSelection,
+                      providers: yield* ProviderRegistry.ProviderRegistry.pipe(
+                        Effect.flatMap((registry) => registry.getProviders),
+                      ),
+                      settings: projectDefaults,
+                      projectId,
+                      now: DateTime.toEpochMillis(yield* DateTime.now),
+                    }).selection
+                  : null) ??
+                undefined;
+              if (modelSelection === undefined)
+                return yield* new OrchestratorMcpFailure({
+                  code: "invalid_request",
+                  message:
+                    "Pass modelSelection: the project has no default model. orchestrator_capabilities lists providers and models.",
+                });
+              let startedRuntimeMode =
+                projectDefaults !== undefined && input.runtimeMode === undefined
+                  ? yield* resolveRuntimeMode(runtimeMode, projectDefaults.defaultRuntimeMode).pipe(
+                      Effect.orElseSucceed(() => runtimeMode),
+                    )
+                  : runtimeMode;
+              if (!replaying) {
+                const providers = yield* (yield* ProviderRegistry.ProviderRegistry).getProviders;
+                startedRuntimeMode = yield* resolveRuntimeMode(
+                  startedRuntimeMode,
+                  input.runtimeMode,
+                  {
+                    modelSelection,
+                    supportedRuntimeModes: providers.find(
+                      (provider) => provider.instanceId === modelSelection.instanceId,
+                    )?.supportedRuntimeModes,
+                  },
+                );
+              }
+              const result = yield* ThreadMessageIntake.launchThread({
+                commandId,
+                threadId,
+                projectId,
+                title: input.title,
+                modelSelection,
+                runtimeMode: startedRuntimeMode,
+                interactionMode,
+                workspaceStrategy: input.workspaceStrategy ?? { type: "root" },
+                ...(input.message === undefined && attachments.length === 0
+                  ? {}
+                  : {
+                      initialMessage: {
+                        messageId,
+                        ...(caller === undefined ? {} : { senderThreadId: caller.id }),
+                        text: input.message ?? "",
+                        attachments,
+                      },
+                    }),
+                createdBy: "agent",
+                creationSource: "mcp",
+                ...(linkOrigin === undefined ? {} : { linkOrigin }),
+                // Kept only alongside linkOrigin: thread.create drops it otherwise.
+                ...(input.delegatedFrom === undefined
+                  ? {}
+                  : { delegatedFrom: input.delegatedFrom }),
+              }).pipe(
+                Effect.mapError((error) => {
+                  if (error._tag === "AttachmentClaimError") {
+                    return new OrchestratorMcpFailure({
+                      code: "orchestration_error",
+                      message: error.message,
+                    });
+                  }
+                  if (error._tag === "ThreadManagementProviderInstanceDisabledError") {
+                    return new OrchestratorMcpFailure({
+                      code: "invalid_request",
+                      message: error.message,
+                    });
+                  }
+                  // The administrator's ceiling refuses the mode; say so rather than "unavailable".
+                  if (error._tag === "ThreadLaunchError" && isAboveCeilingError(error.cause)) {
+                    return new OrchestratorMcpFailure({
+                      code: "invalid_request",
+                      message: error.cause.message,
+                    });
+                  }
+                  return unavailable();
+                }),
+              );
+              const thread = result.projection.thread;
+              const run = result.projection.runs.find((run) => run.userMessageId === messageId);
+              return {
+                threadId: thread.id,
+                link: McpInvocationContext.threadLinkFor(scope, thread.id),
+                projectId: thread.projectId,
+                modelSelection: thread.modelSelection,
+                runId: run?.id ?? null,
+                status: run?.status ?? null,
+              };
+            }),
+          () => botDelegation.reconcile(threadId),
         );
-        const thread = result.projection.thread;
-        const run = result.projection.runs.find((run) => run.userMessageId === messageId);
-        return {
-          threadId: thread.id,
-          link: McpInvocationContext.threadLinkFor(scope, thread.id),
-          projectId: thread.projectId,
-          modelSelection: thread.modelSelection,
-          runId: run?.id ?? null,
-          status: run?.status ?? null,
-        };
       }),
     // The launched thread carries the caller's link, if it has one.
     "stamped",

@@ -29,6 +29,38 @@ const v2TableCount = Effect.gen(function* () {
 });
 
 describe("runMigrations", () => {
+  it.effect(
+    "moves the home assistant into the shared Bot store without losing its canonical identity or review views",
+    () =>
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* runMigrations({ toMigrationInclusive: 86 });
+        yield* sql`UPDATE personal_agent SET thread_id='existing-home',generation=4,revision=7,updated_at='2026-11-05T12:00:00.000Z',config_json=json_set(config_json,'$.name','Custom assistant','$.instructions','Keep this instruction') WHERE id=1`;
+        yield* runMigrations();
+        const [home] = yield* sql<{
+          thread_id: string;
+          revision: number;
+          config_json: string;
+        }>`SELECT thread_id,revision,config_json FROM workspace_bots WHERE bot_id='primary'`;
+        assert.equal(home?.thread_id, "existing-home");
+        assert.equal(home?.revision, 7);
+        assert.include(home?.config_json ?? "", "Keep this instruction");
+        assert.equal(
+          (yield* sql<{ thread_id: string }>`SELECT thread_id FROM personal_agent_legacy`)[0]
+            ?.thread_id,
+          "existing-home",
+        );
+        yield* sql`UPDATE workspace_bots SET thread_id='new-home' WHERE bot_id='primary'`;
+        assert.equal(
+          (yield* sql<{ thread_id: string }>`SELECT thread_id FROM personal_agent WHERE id=1`)[0]
+            ?.thread_id,
+          "new-home",
+        );
+        assert.deepEqual(yield* sql`SELECT * FROM workspace_review_items`, []);
+        assert.deepEqual(yield* sql`SELECT * FROM workspace_assistant_work`, []);
+        assert.deepEqual(yield* runMigrations(), []);
+      }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
+  );
   it.effect("refuses to start when another migration took a V2 id", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;

@@ -473,6 +473,7 @@ function t3ToolSummaryCall(entry: WorkLogPresentationEntry): T3ToolSummaryCall {
 
 function summaryActionPriority(action: ToolGroupAction | T3McpToolSummaryAction): number {
   switch (action) {
+    case "studio-edit":
     case "command":
     case "edit":
     case "delegate":

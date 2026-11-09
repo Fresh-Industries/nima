@@ -1,0 +1,129 @@
+.welcome {
+  padding: 0 4px 20px;
+  color: var(--nima-ink);
+}
+.welcome h1 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: inherit;
+  font-size: 28px;
+  line-height: 1.3;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.welcome h1 span {
+  font-size: 28px;
+}
+.belowComposer {
+  padding: 20px 4px 0;
+}
+.suggestions {
+  display: flex;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.suggestions > * {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--nima-line);
+  border-radius: 7px;
+  padding: 8px 11px;
+  font-size: 11px;
+  color: var(--nima-sub);
+  transition:
+    background-color 150ms,
+    color 150ms;
+}
+.suggestions > *:hover {
+  background: var(--nima-side);
+  color: var(--nima-ink);
+}
+.recent {
+  margin-top: 38px;
+}
+.recent header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.recent h2 {
+  font-size: 11px;
+  color: var(--nima-sub);
+  font-weight: 500;
+}
+.recent header a {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  font-size: 11px;
+  color: var(--nima-muted);
+}
+.documents {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.documents > a {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 16px 0;
+  border-top: 1px solid var(--nima-line);
+  color: var(--nima-sub);
+}
+.documents > a:hover {
+  color: var(--nima-ink);
+}
+.documents span {
+  min-width: 0;
+  flex: 1;
+}
+.documents strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--nima-ink);
+  font-size: 12px;
+  font-weight: 500;
+}
+.documents small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  margin-top: 5px;
+}
+@media (max-width: 640px) {
+  .welcome {
+    padding-bottom: 22px;
+  }
+  .suggestions {
+    gap: 6px;
+  }
+  .suggestions > * {
+    padding: 7px 9px;
+  }
+  .recent {
+    margin-top: 24px;
+  }
+  .documents {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
+@media (max-height: 650px) {
+  .recent {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .suggestions > * {
+    transition: none;
+  }
+}

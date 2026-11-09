@@ -163,6 +163,11 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   triage: Schema.optionalKey(Schema.Boolean),
   /** Server accepts `{ type: "once" }` scheduled tasks; older servers reject them on save. */
   oneTimeSchedules: Schema.optionalKey(Schema.Boolean),
+  botRoutines: Schema.optionalKey(Schema.Boolean),
+  botToolAccess: Schema.optionalKey(Schema.Boolean),
+  botCapabilities: Schema.optionalKey(Schema.Boolean),
+  workspaceReview: Schema.optionalKey(Schema.Boolean),
+  studioDownloads: Schema.optionalKey(Schema.Boolean),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 

@@ -1,3 +1,4 @@
+import * as BotDelegation from "../../../bots/BotDelegation.ts";
 import * as ProviderRegistry from "../../../provider/ProviderRegistry.ts";
 import { expect, it } from "@effect/vitest";
 import {
@@ -109,6 +110,11 @@ const clientLaunchHarness = (input: {
               } as unknown as OrchestrationV2ThreadShell),
         );
       },
+    }),
+    Layer.succeed(BotDelegation.BotDelegation, {
+      reserve: () => Effect.succeed(null),
+      reconcile: () => Effect.void,
+      assertLocal: () => Effect.void,
     }),
     Layer.mock(ThreadLaunch.ThreadLaunchService)({
       checkWorktreeBase: input.checkWorktreeBase ?? (() => Effect.void),

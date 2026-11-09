@@ -3,7 +3,6 @@ import {
   type DesktopUpdateState,
   managedUpdatesDenial,
 } from "@t3tools/contracts";
-import { TriangleAlertIcon } from "lucide-react";
 import { type ComponentProps, useId, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -16,7 +15,6 @@ import { usePrimaryManagedPolicy } from "../../state/managedPolicy";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import {
   canCheckForUpdate,
-  getArm64IntelBuildWarningDescription,
   getDesktopUpdateActionError,
   getDesktopUpdateButtonTooltip,
   getDesktopUpdateDownloadedVersion,
@@ -24,11 +22,9 @@ import {
   getDesktopUpdateInstallConfirmationMessage,
   isDesktopUpdateButtonDisabled,
   resolveDesktopUpdateButtonAction,
-  shouldShowArm64IntelBuildWarning,
   shouldToastDesktopUpdateActionResult,
 } from "../desktopUpdate.logic";
 import { showDesktopUpdateDownloadedToast } from "../desktopUpdate.toast";
-import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { Popover, PopoverCreateHandle, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { SidebarMenuItem } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -115,31 +111,11 @@ function resolveSidebarUpdatePresentation({
   } as const;
 }
 
-export function SidebarUpdateArchitectureWarning() {
-  return isElectron ? <SidebarUpdateArchitectureWarningContent /> : null;
-}
-
-function SidebarUpdateArchitectureWarningContent() {
-  const state = useDesktopUpdateState();
-  const visible = shouldShowArm64IntelBuildWarning(state);
-  const description = state && visible ? getArm64IntelBuildWarningDescription(state) : null;
-
-  if (!visible || !description) return null;
-
-  return (
-    <Alert variant="warning">
-      <TriangleAlertIcon />
-      <AlertTitle>Intel build on Apple Silicon</AlertTitle>
-      <AlertDescription>{description}</AlertDescription>
-    </Alert>
-  );
-}
-
 const toastUpdateError: ReportLocalUpdateError = (title, description) => {
   toastManager.add(stackedThreadToast({ type: "error", title, description }));
 };
 
-export async function downloadLocalUpdate(
+async function downloadLocalUpdate(
   bridge: DesktopBridge,
   {
     notifyDownloaded,
@@ -165,7 +141,7 @@ export async function downloadLocalUpdate(
   }
 }
 
-export async function installLocalUpdate(
+async function installLocalUpdate(
   bridge: DesktopBridge,
   reportError: ReportLocalUpdateError = toastUpdateError,
   expectedVersion?: string,

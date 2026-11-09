@@ -1,3 +1,11 @@
+import type { ProjectContextRecord } from "@t3tools/contracts";
+import { projectContextRecord } from "@t3tools/shared/composerContextReferences";
+import { useProjects as useMentionProjects } from "../../state/entities";
+import { projectContextsForPrompt } from "../../nima/projectMentions";
+import { useWorkSessionConversation } from "../../nima/workSessionContext";
+import { useBotConversation } from "../../nima/useBots";
+import { usePersonalAssistant } from "../../nima/usePersonalAssistant";
+import { usePersonalChat } from "../../nima/useDailyConversation";
 import { useComposerTypingGuard } from "./useComposerTypingGuard";
 import { insertAttachmentReferencesForDraft } from "./composerAttachmentReferences";
 import { DESKTOP_PASTE_AS_TEXT_EVENT } from "../../lib/desktopPasteAsText";
@@ -331,6 +339,7 @@ export interface ChatComposerHandle {
     reviewComments: ReviewCommentContext[];
     threadContexts: ThreadContextRecord[];
     environmentContexts: EnvironmentContextRecord[];
+    projectContexts?: ProjectContextRecord[];
     selectedPromptEffort: string | null;
     selectedModelSelection: ModelSelection;
     multipleModelSelections: ReadonlyArray<ModelSelection> | null;
@@ -505,6 +514,13 @@ const NO_PROVIDER_SKILLS: ServerProvider["skills"] = [];
 const NO_PROVIDER_SLASH_COMMANDS: ServerProvider["slashCommands"] = [];
 
 export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps) {
+  const workSessionConversation = useWorkSessionConversation();
+  const isPersonalChat = usePersonalChat();
+  const mentionProjects = useMentionProjects();
+  const botConversation = useBotConversation();
+  const {
+    config: { reasoning: personalReasoning },
+  } = usePersonalAssistant();
   const {
     composerDraftTarget,
     environmentId,
@@ -713,6 +729,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerReviewComments = composerDraft.reviewComments;
   const composerThreadContexts = attachmentDraft.threadContexts;
   const composerEnvironmentContexts = composerDraft.environmentContexts;
+  const composerProjectContexts = projectContextsForPrompt(prompt, mentionProjects);
   const {
     pendingSnapShotAnimations,
     pendingSnapShotIds,
@@ -764,6 +781,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     previewAnnotations: composerPreviewAnnotations,
     threadContexts: composerThreadContexts,
     environmentContexts: composerEnvironmentContexts,
+    projectContexts: composerProjectContexts,
     images: composerImages,
     files: composerFiles,
     uploadsByImageId,
@@ -884,6 +902,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     selectedModel,
     composerProviderState,
   } = useComposerProviderModel({
+    personalReasoning: isPersonalChat ? personalReasoning : undefined,
     providerStatuses,
     settings,
     activeProjectId,
@@ -1162,6 +1181,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     showSkillsInSlashMenu: settings.showSkillsInSlashMenu,
     workspaceSkillsScanning,
     questionAttachmentTarget,
+    projectMentions: isPersonalChat,
   });
 
   const composerMenuOpen = Boolean(composerTrigger);
@@ -1856,6 +1876,30 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     });
     const { snapshot, trigger } = resolveActiveComposerTrigger();
     if (!trigger) return;
+    if (item.type === "project") {
+      if (trigger.kind !== "path") return;
+      const project = mentionProjects.find(
+        (entry) =>
+          entry.id === item.project.projectId &&
+          entry.environmentId === item.project.environmentId &&
+          entry.archivedAt == null,
+      );
+      if (!project) return;
+      const record = projectContextRecord(item.project, project.title);
+      const replacement = `${formatInlineContextReference(record)} `;
+      const end = extendReplacementRangeForTrailingSpace(
+        snapshot.value,
+        trigger.rangeEnd,
+        replacement,
+      );
+      if (
+        applyPromptReplacement(trigger.rangeStart, end, replacement, {
+          expectedText: snapshot.value.slice(trigger.rangeStart, end),
+        })
+      )
+        setComposerHighlightedItemId(null);
+      return;
+    }
     if (item.type === "path") {
       if (!isPathSuggestionCurrent(item.searchTarget, trigger, environmentId, gitCwd)) return;
       const replacement = `${serializeComposerFileLink(item.path)} `;
@@ -2338,7 +2382,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       toggleInteractionMode={toggleInteractionMode}
       handleRuntimeModeChange={handleRuntimeModeChange}
       composerControlsCollapsed={composerControlsCollapsed}
-      effortDisplay={settings.effortDisplay}
+      effortDisplay={isPersonalChat ? "label" : settings.effortDisplay}
+      personalChat={isPersonalChat}
       permissionsShownInStrip={props.permissionsShownInStrip}
       composerControlsHidden={composerControlsHidden}
       restingHiddenBlockCount={restingHiddenBlockCount}
@@ -3001,6 +3046,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         reviewComments: composerReviewComments,
         threadContexts: composerThreadContexts,
         environmentContexts: composerEnvironmentContexts,
+        projectContexts: projectContextsForPrompt(promptRef.current, mentionProjects),
         selectedPromptEffort,
         selectedModelSelection,
         multipleModelSelections:
@@ -3430,7 +3476,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                               ? "Choose a project above to start a thread"
                               : showProviderUnavailable
                                 ? "Enable a provider in Settings to send a message"
-                                : DEFAULT_COMPOSER_PLACEHOLDER
+                                : isPersonalChat
+                                  ? "Message"
+                                  : botConversation
+                                    ? `Message ${botConversation.config.name}…`
+                                    : workSessionConversation
+                                      ? "Message this session…"
+                                      : DEFAULT_COMPOSER_PLACEHOLDER
                     }
                     disabled={
                       projectSelectionRequired ||

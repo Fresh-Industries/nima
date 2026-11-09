@@ -15,6 +15,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Hex from "effect/encoding/Hex";
 import * as Layer from "effect/Layer";
+import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 import type * as Tool from "effect/ai/Tool";
 
@@ -218,6 +219,19 @@ const make = Effect.gen(function* () {
   );
 
   const call: PeerForwarding["Service"]["call"] = (scope, tool, environmentId, params) => {
+    if (
+      (tool.name === "schedule_task" || tool.name === "list_scheduled_tasks") &&
+      Predicate.hasProperty(params, "ownerBotId") &&
+      params.ownerBotId !== undefined
+    )
+      return Effect.fail(
+        new OrchestratorMcpFailure({
+          code: "invalid_request",
+          message:
+            "Manage Bot-owned routines through a direct connection to the Bot’s Bara host. Persistent Bot identities are not shared through links.",
+        }),
+      );
+
     const forwarded: Effect.Effect<
       Tool.Success<typeof tool>,
       OrchestratorMcpFailure

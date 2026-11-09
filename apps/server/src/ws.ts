@@ -1,3 +1,13 @@
+import * as ProjectTeams from "./bots/ProjectTeams.ts";
+import * as WorkSessions from "./workspace/WorkSessions.ts";
+import * as BotStore from "./bots/BotStore.ts";
+import * as PersonalAgent from "./personalAgent/PersonalAgent.ts";
+import * as AssistantConversation from "./personalAgent/AssistantConversation.ts";
+import * as WorkspacePages from "./workspace/WorkspacePages.ts";
+import * as Studio from "./studio/Studio.ts";
+import * as WorkspaceGoals from "./workspace/WorkspaceGoals.ts";
+import * as WorkspaceReview from "./workspace/WorkspaceReview.ts";
+import * as WorkspaceNotes from "./workspace/WorkspaceNotes.ts";
 import { OrchestrationDispatchCommandError } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as SecureRandom from "effect/crypto/SecureRandom";
@@ -1350,6 +1360,16 @@ export const layerWsRpc = (
       const commandOutputHub = yield* CommandOutputHub.CommandOutputHub;
       const providerSessionManager = yield* ProviderSessionManager.ProviderSessionManagerV2;
       const scheduledTasks = yield* ScheduledTasks.ScheduledTaskService;
+      const workspacePages = yield* WorkspacePages.WorkspacePages;
+      const studio = yield* Studio.Studio;
+      const projectTeams = yield* ProjectTeams.ProjectTeams;
+      const bots = yield* BotStore.BotStore;
+      const personalAgent = yield* PersonalAgent.PersonalAgent;
+      const assistantConversation = yield* AssistantConversation.AssistantConversation;
+      const workspaceNotes = yield* WorkspaceNotes.WorkspaceNotes;
+      const workSessions = yield* WorkSessions.WorkSessions;
+      const workspaceReview = yield* WorkspaceReview.WorkspaceReview;
+      const workspaceGoals = yield* WorkspaceGoals.WorkspaceGoals;
       const secretRequests = yield* SecretRequests.SecretRequests;
       const guestShares = yield* GuestShareService.GuestShareService;
       const pullRequests = yield* PullRequestService.PullRequestService;
@@ -2226,9 +2246,46 @@ export const layerWsRpc = (
               Effect.as(commandOutputHub.subscribe(input)),
             ),
           ),
+        [WS_METHODS.workspaceGoalsRead]: (input) => workspaceGoals.read(input),
+        [WS_METHODS.workspaceGoalsWrite]: (input) => workspaceGoals.write(input),
+        [WS_METHODS.workspaceGoalsProgress]: (input) => workspaceGoals.addProgress(input, "user"),
+        [WS_METHODS.workspaceGoalsHistory]: (input) => workspaceGoals.history(input),
+        [WS_METHODS.workspaceGoalsSubscribe]: () => workspaceGoals.subscribe(),
+        [WS_METHODS.workspacePagesRead]: (input) => workspacePages.read(input),
+        [WS_METHODS.projectTeamsSubscribe]: () => projectTeams.subscribe(),
+        [WS_METHODS.projectTeamsWrite]: (input) => projectTeams.write(input),
+        [WS_METHODS.botsSubscribe]: () => bots.subscribe(),
+        [WS_METHODS.botsCreate]: (input) => bots.create(input),
+        [WS_METHODS.botsWrite]: (input) => bots.write(input),
+        [WS_METHODS.botsResolveApproval]: (input) => bots.resolveApproval(input),
+        [WS_METHODS.botsOpen]: (input) => assistantConversation.openBot(input),
+        [WS_METHODS.personalAgentRead]: () => personalAgent.read(),
+        [WS_METHODS.personalAgentSubscribe]: () => personalAgent.subscribe(),
+        [WS_METHODS.personalAgentWrite]: (input) => personalAgent.write(input),
+        [WS_METHODS.personalAgentOpen]: (input) => assistantConversation.open(input),
+        [WS_METHODS.personalAgentMemories]: (input) =>
+          personalAgent.memories(input, { kind: "owner" }),
+        [WS_METHODS.personalAgentMemorySubscribe]: (input) =>
+          personalAgent.subscribeMemories(input),
+        [WS_METHODS.personalAgentRemember]: (input) =>
+          personalAgent.remember(input, { kind: "owner" }),
+        [WS_METHODS.studioRead]: (input) => studio.read(input),
+        [WS_METHODS.studioSubscribe]: (input) => studio.subscribe(input),
+        [WS_METHODS.studioMutate]: (input) => studio.mutate(input),
+        [WS_METHODS.studioExport]: (input) => studio.exportFile(input),
+        [WS_METHODS.workspacePagesWrite]: (input) => workspacePages.write(input),
+        [WS_METHODS.workspacePagesCapture]: (input) => workspacePages.capture(input),
+        [WS_METHODS.workspacePagesSubscribe]: (input) => workspacePages.subscribe(input),
+        [WS_METHODS.workspaceNotesRead]: () => workspaceNotes.read(),
+        [WS_METHODS.workspaceNotesWrite]: (input) => workspaceNotes.write(input),
+        [WS_METHODS.workspaceNotesSubscribe]: () => workspaceNotes.subscribe(),
         [WS_METHODS.scheduledTasksSubscribe]: (_input) =>
           scheduledTasks.subscribeList().pipe(Stream.map(withVisibleWebhookUrls)),
         [WS_METHODS.scheduledTasksUpsert]: (input) => scheduledTasks.upsert(input),
+        [WS_METHODS.workspaceReviewSubscribe]: (input) => workspaceReview.subscribe(input),
+        [WS_METHODS.workspaceWorkCreate]: (input) => workSessions.create(input),
+        [WS_METHODS.workspaceReviewWrite]: (input) => workspaceReview.write(input),
+        [WS_METHODS.scheduledTasksListRuns]: (input) => scheduledTasks.listRuns(input),
         [WS_METHODS.scheduledTasksSetEnabled]: (input) =>
           Effect.annotateCurrentSpan({ "scheduled_task.id": input.id }).pipe(
             Effect.andThen(scheduledTasks.setEnabled(input)),

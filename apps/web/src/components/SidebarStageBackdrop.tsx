@@ -24,15 +24,6 @@ export function resolveSidebarStageBackdropVariant(
   return null;
 }
 
-export function resolveEnvironmentIdentificationPillLabel(
-  stageLabel: string,
-): EnvironmentIdentificationPillLabel | null {
-  const normalized = stageLabel.trim().toLowerCase();
-  if (normalized === "dev") return "Dev";
-  if (normalized === "nightly") return "Nightly";
-  return null;
-}
-
 export function useEnvironmentStageLabel(): string {
   const primaryServerVersion =
     useAtomValue(primaryServerConfigAtom)?.environment.serverVersion ?? null;
@@ -47,21 +38,6 @@ export function useSidebarStageBackdropVariant(
   mode: EnvironmentIdentificationMode,
 ): SidebarStageBackdropVariant | null {
   return resolveSidebarStageBackdropVariant(useEnvironmentStageLabel(), mode);
-}
-
-export function SidebarStageBackdrop({ variant }: { variant: SidebarStageBackdropVariant }) {
-  return (
-    <div
-      aria-hidden
-      className="sidebar-stage-backdrop pointer-events-none absolute inset-x-0 top-0 z-0 h-20 select-none overflow-hidden"
-    >
-      <StageBackdropArt variant={variant} />
-    </div>
-  );
-}
-
-function StageBackdropArt({ variant }: { variant: SidebarStageBackdropVariant }) {
-  return variant === "nightly" ? <NightlySkyArt /> : <DevBlueprintArt />;
 }
 
 export function StageBackdropButtonArt({ variant }: { variant: SidebarStageBackdropVariant }) {

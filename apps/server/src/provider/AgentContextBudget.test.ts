@@ -1,3 +1,11 @@
+import * as BotStore from "../bots/BotStore.ts";
+import * as ProjectTeams from "../bots/ProjectTeams.ts";
+import * as BotDelegation from "../bots/BotDelegation.ts";
+import * as PersonalAgent from "../personalAgent/PersonalAgent.ts";
+import * as WorkspacePages from "../workspace/WorkspacePages.ts";
+import * as Studio from "../studio/Studio.ts";
+import * as WorkspaceGoals from "../workspace/WorkspaceGoals.ts";
+import { WorkspaceNotes } from "../workspace/WorkspaceNotes.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
@@ -47,6 +55,18 @@ import budget from "./agentContextBudget.json" with { type: "json" };
 
 // Registration only stores tool definitions, so the handlers' services are never called.
 const toolHandlerServices = Layer.mergeAll(
+  Layer.succeed(BotDelegation.BotDelegation, {
+    reserve: () => Effect.succeed(null),
+    reconcile: () => Effect.void,
+    assertLocal: () => Effect.void,
+  }),
+  Layer.mock(BotStore.BotStore)({}),
+  Layer.mock(ProjectTeams.ProjectTeams)({}),
+  Layer.mock(PersonalAgent.PersonalAgent)({}),
+  Layer.mock(WorkspacePages.WorkspacePages)({}),
+  Layer.mock(Studio.Studio)({}),
+  Layer.mock(WorkspaceGoals.WorkspaceGoals)({}),
+  Layer.mock(WorkspaceNotes)({}),
   Layer.mock(DeviceService)({}),
   Layer.mock(DocumentText)({}),
   Layer.mock(GitVcsDriver)({}),

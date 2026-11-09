@@ -20,7 +20,11 @@ export interface EnvironmentQueryView<A, E = unknown> {
 
 export function formatEnvironmentQueryError(cause: Cause.Cause<unknown>): string {
   const error = Cause.squash(cause);
-  return error instanceof Error && error.message.trim().length > 0
+  return error !== null &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof error.message === "string" &&
+    error.message.trim().length > 0
     ? error.message
     : "The environment request failed.";
 }

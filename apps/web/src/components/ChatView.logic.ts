@@ -1,3 +1,4 @@
+import type { ProjectContextRecord } from "@t3tools/contracts";
 import { type OrchestrationV2ProviderTurn, type RunAttemptId } from "@t3tools/contracts";
 import {
   deriveLatestThreadRun,
@@ -316,6 +317,7 @@ export function resolveWorktreeSetupProgress(input: {
 
 export function resolveDraftHeroState(input: {
   isLocalDraftThread: boolean;
+  isPersonalChat?: boolean;
   hasTimelineEntries: boolean;
   isWorking: boolean;
   draftHeroDockRequested: boolean;
@@ -329,7 +331,7 @@ export function resolveDraftHeroState(input: {
     return true;
   }
   return (
-    input.isLocalDraftThread &&
+    (input.isLocalDraftThread || input.isPersonalChat === true) &&
     !input.hasTimelineEntries &&
     !input.isWorking &&
     !input.draftHeroDockRequested
@@ -1178,6 +1180,7 @@ export interface PlanFollowUpComposerSnapshot {
   readonly previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
   readonly threadContexts: ReadonlyArray<ThreadContextRecord>;
   readonly environmentContexts: ReadonlyArray<EnvironmentContextRecord>;
+  readonly projectContexts?: ReadonlyArray<ProjectContextRecord>;
 }
 
 // A draft typed while the send was in flight is newer and stays. Composer refs and the cursor
@@ -1368,6 +1371,7 @@ export interface ComposerSendContents {
   readonly reviewComments: ReadonlyArray<ReviewCommentContext>;
   readonly threadContexts: ReadonlyArray<ThreadContextRecord>;
   readonly environmentContexts: ReadonlyArray<EnvironmentContextRecord>;
+  readonly projectContexts?: ReadonlyArray<ProjectContextRecord>;
 }
 
 /**
@@ -1388,6 +1392,7 @@ export function snapshotComposerSend(contents: ComposerSendContents) {
     reviewComments: [...contents.reviewComments],
     threadContexts: [...contents.threadContexts],
     environmentContexts: [...contents.environmentContexts],
+    projectContexts: [...(contents.projectContexts ?? [])],
     messageText: contents.terminalContexts
       .filter((context) => !terminalContexts.includes(context))
       .reduce(

@@ -167,6 +167,13 @@ describe("editing scheduled task branch settings", () => {
     const draft = taskToDraft(legacyTask);
     expect(draft.baseRef).toBe("release");
     expect(draft.startFromOrigin).toBe(false);
+    const fixed = {
+      type: "fixed_time" as const,
+      timeOfDay: "09:00",
+      weekdays: [1],
+      timeZone: "America/Chicago",
+    };
+    expect(scheduleFromDraft(taskToDraft({ ...legacyTask, schedule: fixed }))).toEqual(fixed);
   });
 });
 

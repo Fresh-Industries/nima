@@ -328,6 +328,7 @@ export const createDevRunnerEnv = Effect.fn("dev-runner.createDevRunnerEnv")(fun
 
   if (configuredBaseDir !== undefined) {
     output.T3CODE_HOME = resolvedBaseDir;
+    if (isDesktopMode) output.BARA_HOME = resolvedBaseDir;
   } else {
     delete output.T3CODE_HOME;
   }

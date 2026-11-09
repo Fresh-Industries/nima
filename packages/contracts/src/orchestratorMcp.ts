@@ -1,3 +1,5 @@
+import { BotId } from "./bots.ts";
+import { WorkspaceGoalId } from "./workspaceGoals.ts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
@@ -67,7 +69,7 @@ const OrchestratorMcpSchedule = Schema.Union([
   OrchestratorMcpScheduleFromJsonString,
 ]).annotate({
   description:
-    "Trigger: {type:'interval',everyMs}, {type:'fixed_time',timeOfDay,weekdays?}, {type:'once',runAt}, or {type:'webhook'}.",
+    "Trigger: {type:'interval',everyMs}, {type:'fixed_time',timeOfDay,weekdays?,timeZone?}, {type:'once',runAt}, or {type:'webhook'}.",
 });
 
 const OrchestratorMcpTargetOptionsFromRecord = Schema.Record(
@@ -166,6 +168,12 @@ export type OrchestratorMcpTerminalDelegatedTaskStatus =
   typeof OrchestratorMcpTerminalDelegatedTaskStatus.Type;
 
 export const OrchestratorMcpDelegateTaskInput = Schema.Struct({
+  coordinatorBotId: Schema.optional(
+    BotId.annotate({
+      description:
+        "Persistent Bot id from t3_bot_list. Uses its current instructions in this child, without importing its conversation. Local environment only.",
+    }),
+  ),
   task: OrchestratorMcpPrompt,
   target: Schema.optional(OrchestratorMcpTarget),
   title: Schema.optional(OrchestratorMcpTitle),
@@ -650,15 +658,24 @@ export const OrchestratorMcpCapabilitiesResult = Schema.Struct({
 export type OrchestratorMcpCapabilitiesResult = typeof OrchestratorMcpCapabilitiesResult.Type;
 
 export const OrchestratorMcpScheduleTaskInput = Schema.Struct({
+  ownerBotId: Schema.optional(Schema.NullOr(BotId)).annotate({
+    description:
+      "Persistent owner Bot id from the current Bara identity or t3_bot_list. Owned routines use a new Work conversation per run; they never post scheduled transcripts into the relationship chat. Omit to preserve existing ownership; null removes it.",
+  }),
   environmentId: OrchestratorMcpEnvironmentTarget,
   projectId: OrchestratorMcpProjectTarget,
   prompt: OrchestratorMcpPrompt,
   schedule: OrchestratorMcpSchedule,
+  goalId: Schema.optional(Schema.NullOr(WorkspaceGoalId)).annotate({
+    description:
+      "Saved Bara goal id for a goal check-in. Read the goal first. Omit to keep the link on edits; null removes it. Inactive goals wait without starting agents.",
+  }),
   title: Schema.optional(OrchestratorMcpTitle),
   enabled: Schema.optional(Schema.Boolean.annotate({ description: "Default true." })),
   bindToCurrentThread: Schema.optional(
     Schema.Boolean.annotate({
-      description: "Default true: runs post in this thread. False: new thread per run.",
+      description:
+        "Bot-owned routines always use a new thread per run. Otherwise defaults true: runs post in this thread; false creates new threads.",
     }),
   ),
   clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
@@ -676,12 +693,14 @@ export type OrchestratorMcpSaveScheduledTaskInput =
   typeof OrchestratorMcpSaveScheduledTaskInput.Type;
 
 export const OrchestratorMcpScheduledTask = Schema.Struct({
+  ownerBotId: Schema.optional(Schema.NullOr(BotId)),
   scheduledTaskId: ScheduledTaskId,
   title: Schema.String,
   prompt: Schema.String,
   enabled: Schema.Boolean,
   projectId: ProjectId,
   boundThreadId: Schema.NullOr(ThreadId),
+  goalId: Schema.optional(Schema.NullOr(WorkspaceGoalId)),
   schedule: ScheduledTaskSchedule,
   nextRunAt: Schema.NullOr(IsoDateTime),
   lastRunStatus: ScheduledTaskRunStatus,
@@ -700,6 +719,7 @@ export const OrchestratorMcpScheduleTaskResult = OrchestratorMcpScheduledTask;
 export type OrchestratorMcpScheduleTaskResult = typeof OrchestratorMcpScheduleTaskResult.Type;
 
 export const OrchestratorMcpListScheduledTasksInput = Schema.Struct({
+  ownerBotId: Schema.optional(BotId),
   environmentId: OrchestratorMcpEnvironmentTarget,
   projectId: Schema.optional(
     ProjectId.annotate({
@@ -717,6 +737,8 @@ export type OrchestratorMcpListScheduledTasksResult =
   typeof OrchestratorMcpListScheduledTasksResult.Type;
 
 export const OrchestratorMcpUpdateScheduledTaskInput = Schema.Struct({
+  ownerBotId: OrchestratorMcpScheduleTaskInput.fields.ownerBotId,
+  goalId: OrchestratorMcpScheduleTaskInput.fields.goalId,
   environmentId: OrchestratorMcpEnvironmentTarget,
   scheduledTaskId: ScheduledTaskId,
   prompt: Schema.optional(OrchestratorMcpPrompt),

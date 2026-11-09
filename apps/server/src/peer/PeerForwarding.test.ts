@@ -1,3 +1,4 @@
+import * as BotDelegation from "../bots/BotDelegation.ts";
 import * as DocumentText from "../provider/DocumentText.ts";
 import { NodeHttpServer } from "@effect/platform-node";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
@@ -205,8 +206,24 @@ const serveBox = (seen: Ref.Ref<Seen>, linkSession: Ref.Ref<string>) =>
   servePeer(
     box,
     Layer.mergeAll(
-      McpHttpServer.layerOrchestratorToolkit,
-      McpHttpServer.layerProjectRegistration,
+      McpHttpServer.layerOrchestratorToolkit.pipe(
+        Layer.provide(
+          Layer.succeed(BotDelegation.BotDelegation, {
+            reserve: () => Effect.succeed(null),
+            reconcile: () => Effect.void,
+            assertLocal: () => Effect.void,
+          }),
+        ),
+      ),
+      McpHttpServer.layerProjectRegistration.pipe(
+        Layer.provide(
+          Layer.succeed(BotDelegation.BotDelegation, {
+            reserve: () => Effect.succeed(null),
+            reconcile: () => Effect.void,
+            assertLocal: () => Effect.void,
+          }),
+        ),
+      ),
       McpHttpServer.layerThreadToolkit,
     ).pipe(
       Layer.provide(DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer))),
@@ -260,8 +277,24 @@ const mcpClient = McpSchema.McpServerClient.of({
 const makeLaptop = Effect.gen(function* () {
   const linking = yield* layerLinkingEnvironment(laptop).pipe(Layer.build);
   const layerHere = Layer.mergeAll(
-    McpHttpServer.layerOrchestratorToolkit,
-    McpHttpServer.layerProjectRegistration,
+    McpHttpServer.layerOrchestratorToolkit.pipe(
+      Layer.provide(
+        Layer.succeed(BotDelegation.BotDelegation, {
+          reserve: () => Effect.succeed(null),
+          reconcile: () => Effect.void,
+          assertLocal: () => Effect.void,
+        }),
+      ),
+    ),
+    McpHttpServer.layerProjectRegistration.pipe(
+      Layer.provide(
+        Layer.succeed(BotDelegation.BotDelegation, {
+          reserve: () => Effect.succeed(null),
+          reconcile: () => Effect.void,
+          assertLocal: () => Effect.void,
+        }),
+      ),
+    ),
     McpHttpServer.layerThreadToolkit,
   ).pipe(
     Layer.provide(DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer))),
@@ -636,6 +669,28 @@ it.effect("refuses what a linked environment cannot take before anything leaves"
         threadId: boxThread,
       });
       expect(failureOf(unknown)).toMatchObject({ code: "invalid_request" });
+      expect(yield* Ref.get(b.bearers)).toEqual([]);
+
+      for (const [name, args] of [
+        [
+          "schedule_task",
+          {
+            environmentId: box.environmentId,
+            ownerBotId: "primary",
+            projectId: boxProject,
+            prompt: "Daily briefing",
+            schedule: { type: "interval", everyMs: 60000 },
+          },
+        ],
+        [
+          "schedule_task",
+          { environmentId: box.environmentId, scheduledTaskId: "remote-job", ownerBotId: null },
+        ],
+        ["list_scheduled_tasks", { environmentId: box.environmentId, ownerBotId: "primary" }],
+      ] as const) {
+        const owned = yield* a.call("thread:laptop-full", name, args);
+        expect(failureOf(owned)).toMatchObject({ code: "invalid_request" });
+      }
       expect(yield* Ref.get(b.bearers)).toEqual([]);
 
       // The box sees only the link's credential, so one that may not control

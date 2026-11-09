@@ -57,6 +57,9 @@ const environmentQuery = vi.hoisted(() => ({
   error: "Pull request not found",
   data: null as unknown,
 }));
+vi.mock("../../nima/usePersonalAssistant", () => ({
+  usePersonalAssistant: () => ({ config: { name: "Citrus", timezone: "UTC" } }),
+}));
 vi.mock(import("~/state/query"), async (original) => ({
   ...(await original()),
   useEnvironmentQuery: (() => ({
@@ -1548,4 +1551,78 @@ it("keeps concurrent approvals actionable outside collapsed work and restores se
   await expect
     .element(screen.getByRole("button", { name: "Open the current tab", exact: true }))
     .toBeVisible();
+});
+
+it("reveals assistant days above the current conversation without jumping to the end", async () => {
+  const props = baseProps();
+  const entries: Entry[] = [7, 8, 9].flatMap((day) =>
+    Array.from({ length: 12 }, (_, index) => {
+      const createdAt = `2026-11-${String(day).padStart(2, "0")}T12:${String(index).padStart(2, "0")}:00Z`;
+      return {
+        ...message(
+          `Day ${day}, message ${index}. ${"A conversation that continues across days. ".repeat(12)}`,
+          { createdAt, updatedAt: createdAt },
+          `day-${day}-${index}`,
+        ),
+        createdAt,
+      };
+    }),
+  );
+  const navigation = vi.fn();
+  function Conversation() {
+    const [from, setFrom] = useState(9);
+    const [following, setFollowing] = useState(true);
+    return (
+      <div style={{ height: 560 }}>
+        <MessagesTimeline
+          {...props}
+          assistantDays={{ timezone: "UTC", today: "2026-11-09" }}
+          timelineEntries={entries.filter((entry) => Number(entry.createdAt.slice(8, 10)) >= from)}
+          liveFollowEnabled={following}
+          onViewportAttach={(viewport) =>
+            viewport.subscribe((event) => {
+              if (event.source === "command" && event.releasesFollow) {
+                navigation();
+                setFollowing(false);
+              }
+            })
+          }
+          historyHeader={
+            from > 7 ? (
+              <button onClick={() => setFrom((current) => current - 1)}>View previous day</button>
+            ) : undefined
+          }
+        />
+      </div>
+    );
+  }
+  await using screen = await render(<Conversation />);
+  await vi.waitFor(() => expect(props.listRef.current).not.toBeNull());
+  await act(() => props.listRef.current!.scrollToOffset({ offset: 0, animated: false }));
+  await expect
+    .element(screen.getByRole("button", { name: "View previous day", exact: true }))
+    .toBeVisible();
+  const scroll = props.listRef.current!.getScrollableNode()!;
+  const firstToday = () => scroll.querySelector('[data-chat-day="Today"]')!;
+  await vi.waitFor(() => expect(firstToday()).not.toBeNull());
+  const before = firstToday().getBoundingClientRect().top;
+  await screen.getByRole("button", { name: "View previous day", exact: true }).click();
+  await vi.waitFor(() => expect(props.listRef.current!.getState().data.length).toBe(24));
+  expect(navigation).toHaveBeenCalled();
+  await vi.waitFor(() =>
+    expect(Math.abs(firstToday().getBoundingClientRect().top - before)).toBeLessThan(5),
+  );
+  await page.screenshot({
+    path: "/workspace/nima/.t3/bara-day-continuation.png",
+  });
+  expect(props.listRef.current!.getState().data.some((row) => row.id.includes("day-7"))).toBe(
+    false,
+  );
+  await act(() => props.listRef.current!.scrollToOffset({ offset: 0, animated: false }));
+  await screen.getByRole("button", { name: "View previous day", exact: true }).click();
+  await vi.waitFor(() => expect(props.listRef.current!.getState().data.length).toBe(36));
+  expect(props.listRef.current!.getState().data.some((row) => row.id.includes("day-9"))).toBe(true);
+  await expect
+    .element(screen.getByRole("button", { name: "View previous day", exact: true }))
+    .not.toBeInTheDocument();
 });

@@ -1,8 +1,12 @@
+import * as BotStore from "../bots/BotStore.ts";
+import * as SqlClient from "effect/sql/SqlClient";
+import * as BotDelegation from "../bots/BotDelegation.ts";
 import * as NodeURL from "node:url";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import {
+  BotId,
   CommandId,
   EnvironmentId,
   isProviderNativeSubagentThread,
@@ -55,6 +59,12 @@ import * as PeerLinkRequests from "../peer/PeerLinkRequests.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 
 const layerOrchestratorToolkit = McpHttpServer.layerOrchestratorToolkit.pipe(
+  Layer.provideMerge(
+    BotDelegation.layer.pipe(
+      Layer.provideMerge(BotStore.layer),
+      Layer.provideMerge(SqlitePersistence.layerMemory),
+    ),
+  ),
   Layer.provide(Layer.mock(ThreadLaunchService.ThreadLaunchService)({})),
   Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
 );
@@ -180,6 +190,7 @@ const layerUnusedScheduledTaskStub = Layer.succeed(
   ScheduledTaskService.ScheduledTaskService.of({
     list: () => Effect.succeed({ tasks: [] }),
     subscribeList: () => Stream.succeed({ tasks: [] }),
+    listRuns: () => Effect.succeed({ runs: [], nextCursor: null }),
     upsert: () => Effect.die("ScheduledTaskService.upsert is unused in this test"),
     setEnabled: () => Effect.die("ScheduledTaskService.setEnabled is unused in this test"),
     delete: () => Effect.die("ScheduledTaskService.delete is unused in this test"),
@@ -198,7 +209,7 @@ describe("orchestrator MCP toolkit", () => {
     { label: "distinct", result: queuedFollowupResult, latestSummary: queuedFollowupResult },
     { label: "identical", result: delegatedResult, latestSummary: null },
     { label: "emoji", result: "😀", latestSummary: "😀" },
-  ])("reports $label child results", ({ result, latestSummary }) =>
+  ])("reports $label child results", ({ result, latestSummary, label }) =>
     Effect.scoped(
       Effect.gen(function* () {
         const cwd = yield* checkpointWorkspace("delegated-task-status");
@@ -326,10 +337,23 @@ describe("orchestrator MCP toolkit", () => {
                 Effect.provideService(McpSchema.McpServerClient, client),
               );
 
+          const bots = yield* BotStore.BotStore;
+          const sql = yield* SqlClient.SqlClient;
+          const coordinator =
+            label === "distinct"
+              ? yield* bots.create({
+                  id: BotId.make("lead"),
+                  name: "Engineering Lead",
+                  description: "Coordinate engineering",
+                })
+              : null;
+          if (coordinator)
+            yield* sql`UPDATE workspace_bots SET thread_id=${parentThreadId} WHERE bot_id='primary'`;
           const delegationStartSequence =
             yield* orchestrator.getThreadEventSequence(parentThreadId);
           const delegatedCall = yield* invoke("delegate_task", {
             task: delegatedPrompt,
+            ...(coordinator ? { coordinatorBotId: coordinator.id } : {}),
             target: {
               providerInstanceId: codexInstanceId,
               model: codexModel,
@@ -341,6 +365,21 @@ describe("orchestrator MCP toolkit", () => {
             delegatedCall.structuredContent,
           ).pipe(Effect.orDie);
           expect(delegatedStart.childRunId).not.toBeNull();
+          if (coordinator) {
+            const work = yield* bots.workForThread(localChild(delegatedStart.childThreadId));
+            expect(work?.coordinator?.id).toBe(coordinator.id);
+            expect(work?.projectId).toBeNull();
+            const retry = yield* invoke("delegate_task", {
+              task: delegatedPrompt,
+              coordinatorBotId: coordinator.id,
+              target: { providerInstanceId: codexInstanceId, model: codexModel },
+              mode: "async",
+              clientRequestId: "delegate-codex-replay-1",
+            });
+            expect((yield* decodeDelegateTaskResult(retry.structuredContent)).childThreadId).toBe(
+              delegatedStart.childThreadId,
+            );
+          }
           yield* orchestrator
             .streamStoredEventsFrom({
               threadId: parentThreadId,

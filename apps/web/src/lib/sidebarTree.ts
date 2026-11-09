@@ -1,10 +1,5 @@
 const ROW = "[data-sidebar-row]";
 
-/** Ref callback for a sidebar list; installs its keyboard navigation and returns its cleanup. */
-export function attachSidebarTree(element: HTMLElement | null) {
-  return element ? installSidebarTree(element) : undefined;
-}
-
 /**
  * Arrow keys move focus between rows without opening them, as in VS Code's list commands.
  * Rows stay ordinary buttons in the Tab order so screen readers can browse the list.

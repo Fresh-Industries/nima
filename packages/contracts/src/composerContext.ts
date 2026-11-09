@@ -6,6 +6,7 @@ import {
   GuestMessageId,
   GuestShareId,
   NonNegativeInt,
+  ProjectId,
   PositiveInt,
   ThreadId,
   TrimmedNonEmptyString,
@@ -25,6 +26,7 @@ export const COMPOSER_CONTEXT_KINDS = [
   "skill",
   "thread",
   "environment",
+  "project",
 ] as const;
 export type KnownComposerContextKind = (typeof COMPOSER_CONTEXT_KINDS)[number];
 
@@ -212,6 +214,15 @@ export const ThreadContextRecord = Schema.Struct({
 });
 export type ThreadContextRecord = typeof ThreadContextRecord.Type;
 
+export const ProjectContextRecord = Schema.Struct({
+  ...recordBase,
+  kind: Schema.Literal("project"),
+  environmentId: EnvironmentId,
+  projectId: ProjectId,
+  title: ContextLabel,
+});
+export type ProjectContextRecord = typeof ProjectContextRecord.Type;
+
 /**
  * One of the user's machines (a T3 Code environment), mentioned so the agent
  * links it or works there. Only identity travels: the agent links it by id,
@@ -254,6 +265,7 @@ export const KnownComposerContextRecord = Schema.Union([
   MentionContextRecord,
   SkillContextRecord,
   ThreadContextRecord,
+  ProjectContextRecord,
   EnvironmentContextRecord,
 ]);
 export type KnownComposerContextRecord = typeof KnownComposerContextRecord.Type;

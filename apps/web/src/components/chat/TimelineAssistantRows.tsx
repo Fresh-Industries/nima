@@ -1,3 +1,10 @@
+import { usePersonalChat } from "../../nima/useDailyConversation";
+import { useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/reactivity";
+import { environmentThreadDetails } from "../../state/threads";
+import { focusCompletion } from "../../nima/focusCompletion";
+import { AssistantFocusUpdate } from "../../nima/AssistantFocusUpdate";
+import { usePersonalAssistant } from "../../nima/usePersonalAssistant";
 import { shouldPreserveAssistantLineBreaks } from "@t3tools/shared/markdownPipeline";
 import { type RunId } from "@t3tools/contracts";
 import { canForkProjectedAssistantItem } from "@t3tools/client-runtime/state/thread-workflows";
@@ -24,8 +31,14 @@ import { useV2ItemSupport } from "../../state/v2ItemSupport";
 import { TimelineRowCtx, TimelineRowActivityCtx, type TimelineRow } from "./timelineRowContext";
 import { MESSAGE_HEADING_LEVEL, MessageAuthorHeading } from "./TimelineRowParts";
 
+const NO_FOCUS_THREAD = Atom.make(undefined);
+
 export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
+  const isPersonalChat = usePersonalChat();
+  const {
+    config: { name: personalAgentName },
+  } = usePersonalAssistant();
   // The timeline holds a streaming message's row while only its text grows.
   const liveText = useAssistantMessageText(
     row.message.streaming ? ctx.threadRef : null,
@@ -33,11 +46,24 @@ export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind
   );
   const text = liveText ?? row.message.text;
   const messageText = text || (row.message.streaming ? "" : "(empty response)");
+  const completion = useAtomValue(
+    isPersonalChat && ctx.threadRef
+      ? environmentThreadDetails.threadAtom(ctx.threadRef)
+      : NO_FOCUS_THREAD,
+    (thread) => focusCompletion(thread?.projection, row.message.runId),
+  );
+  if (completion && ctx.threadRef)
+    return <AssistantFocusUpdate parentRef={ctx.threadRef} taskIds={completion.taskIds} />;
 
   return (
     <>
-      <div className="relative min-w-0 px-1 py-0.5">
-        <MessageAuthorHeading>T3 Code</MessageAuthorHeading>
+      <div
+        className="relative min-w-0 px-1 py-0.5"
+        data-nima-assistant-bubble={isPersonalChat || undefined}
+      >
+        <MessageAuthorHeading>
+          {isPersonalChat ? personalAgentName : "T3 Code"}
+        </MessageAuthorHeading>
         <div data-thread-find-text="true">
           <AssistantCitationSource
             messageId={row.message.id}

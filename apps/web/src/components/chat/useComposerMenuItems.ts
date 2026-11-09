@@ -28,7 +28,7 @@ import {
   getProviderSlashCommandsForSlashMenu,
 } from "@t3tools/client-runtime/providerSkills";
 import { searchProviderSkills } from "../../providerSkillSearch";
-import { useVisibleThreadShells } from "~/state/entities";
+import { useProjects, useVisibleThreadShells } from "~/state/entities";
 import { useEnvironmentIdentities, useEnvironmentMachines } from "~/state/environments";
 import { offersLinkedEnvironmentsAtom } from "~/state/peerLinks";
 import {
@@ -73,6 +73,7 @@ export function useComposerMenuItems({
   showSkillsInSlashMenu,
   workspaceSkillsScanning,
   questionAttachmentTarget,
+  projectMentions = false,
 }: {
   readonly composerTrigger: ComposerTrigger | null;
   readonly environmentId: EnvironmentId;
@@ -92,7 +93,9 @@ export function useComposerMenuItems({
   readonly showSkillsInSlashMenu: boolean;
   readonly workspaceSkillsScanning: boolean;
   readonly questionAttachmentTarget: DraftId | null;
+  readonly projectMentions?: boolean;
 }) {
+  const projects = useProjects();
   // Thread mentions rank by recency as of when the composer mounted.
   const [now] = useState(() => Date.now());
   const composerTriggerKind = composerTrigger?.kind ?? null;
@@ -188,6 +191,25 @@ export function useComposerMenuItems({
     if (!composerTrigger) return [];
     if (composerTrigger.kind === "path") {
       return [
+        ...(projectMentions
+          ? projects
+              .filter(
+                (project) =>
+                  project.archivedAt == null &&
+                  !project.isScratch &&
+                  (project.title !== "No project" ||
+                    !/[/\\]scratch$/i.test(project.workspaceRoot)) &&
+                  project.title.toLowerCase().includes(composerTrigger.query.trim().toLowerCase()),
+              )
+              .slice(0, 12)
+              .map((project) => ({
+                id: `project:${project.environmentId}:${project.id}`,
+                type: "project" as const,
+                project: { environmentId: project.environmentId, projectId: project.id },
+                label: project.title,
+                description: `Project · ${mentionableEnvironments.find((host) => host.environmentId === project.environmentId)?.label ?? project.environmentId}`,
+              }))
+          : []),
         ...matchComposerThreadItems({
           shells: environmentThreadShells,
           environmentId,

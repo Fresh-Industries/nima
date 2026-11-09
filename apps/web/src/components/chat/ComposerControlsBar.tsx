@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import type { ChatComposerProps } from "./ChatComposer";
 import type { PromptUltrathink } from "./TraitsPicker";
 import type { ProviderInstanceEntry } from "../../providerInstances";
@@ -54,6 +55,7 @@ export function ComposerControlsBar(props: {
   planModeEnabled: boolean;
   planModeUiEnabled: boolean;
   effortDisplay: EffortDisplay;
+  personalChat?: boolean;
   /** The strip under a new thread names the permissions, so the row does not repeat them. */
   permissionsShownInStrip: boolean;
   interactionMode: ProviderInteractionMode;
@@ -222,19 +224,31 @@ export function ComposerControlsBar(props: {
         MODEL_TRIGGER_STATES,
         composerControlsCollapsed ? "min-w-13 shrink text-xs!" : "min-w-13",
       )}
-      triggerSuffix={effort.suffix}
+      triggerSuffix={props.personalChat ? null : effort.suffix}
       triggerDetail={effort.detail}
       triggerShortcuts={
         pickerOwnsModeShortcut ? "composer.effort composer.mode" : "composer.effort"
       }
-      effortColumn={<ComposerEffortColumn traits={traitsInput} />}
+      effortColumn={props.personalChat ? null : <ComposerEffortColumn traits={traitsInput} />}
       footer={
-        <ComposerPickerFooter
-          traits={traitsInput}
-          runtimeMode={compatibleRuntimeMode}
-          runtimeModeOptions={compatibleRuntimeModeOptions}
-          onRuntimeModeChange={handleRuntimeModeChange}
-        />
+        <>
+          <ComposerPickerFooter
+            traits={traitsInput}
+            runtimeMode={compatibleRuntimeMode}
+            runtimeModeOptions={compatibleRuntimeModeOptions}
+            onRuntimeModeChange={handleRuntimeModeChange}
+          />
+          {props.personalChat && effort.detail && (
+            <Link
+              to="/settings/general"
+              hash="personal-agent"
+              className="inline-flex shrink-0 items-center gap-1.5 px-2 text-xs text-muted-foreground"
+              aria-label={`Personal agent reasoning: ${effort.detail}. Open settings`}
+            >
+              Reasoning: {effort.detail} · Personal agent settings
+            </Link>
+          )}
+        </>
       }
       terminalOpen={terminalOpen}
       open={modelPickerOpen}

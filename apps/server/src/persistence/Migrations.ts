@@ -81,6 +81,21 @@ import Migration0075 from "./Migrations/075_SubagentDeliveryState.ts";
 import Migration0076 from "./Migrations/076_ProjectionProjectsPinArchive.ts";
 import Migration0077 from "./Migrations/077_RepairBooleanSettledOverride.ts";
 import Migration0078 from "./Migrations/078_DropOrchestrationEventCorrelationIndex.ts";
+import Migration0079 from "./Migrations/079_WorkspaceNotes.ts";
+import Migration0080 from "./Migrations/080_WorkspaceGoals.ts";
+import Migration0081 from "./Migrations/081_ScheduledTaskRunHistory.ts";
+import Migration0082 from "./Migrations/082_WorkspaceReview.ts";
+import Migration0083 from "./Migrations/083_GoalCheckins.ts";
+import Migration0084 from "./Migrations/084_WorkspacePages.ts";
+import Migration0085 from "./Migrations/085_PersonalAgent.ts";
+import Migration0090 from "./Migrations/090_BotRoutines.ts";
+import Migration0091 from "./Migrations/091_BotToolAccess.ts";
+import Migration0092 from "./Migrations/092_BotCapabilities.ts";
+import Migration0093 from "./Migrations/093_BotMemory.ts";
+import Migration0089 from "./Migrations/089_ProjectTeams.ts";
+import Migration0088 from "./Migrations/088_WorkSessions.ts";
+import Migration0087 from "./Migrations/087_PersistentBots.ts";
+import Migration0086 from "./Migrations/086_AssistantWork.ts";
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -162,6 +177,21 @@ const migrationEntries = [
   [76, "ProjectionProjectsPinArchive", Migration0076],
   [77, "RepairBooleanSettledOverride", Migration0077],
   [78, "DropOrchestrationEventCorrelationIndex", Migration0078],
+  [79, "WorkspaceNotes", Migration0079],
+  [80, "WorkspaceGoals", Migration0080],
+  [81, "ScheduledTaskRunHistory", Migration0081],
+  [82, "WorkspaceReview", Migration0082],
+  [83, "GoalCheckins", Migration0083],
+  [84, "WorkspacePages", Migration0084],
+  [85, "PersonalAgent", Migration0085],
+  [86, "AssistantWork", Migration0086],
+  [87, "PersistentBots", Migration0087],
+  [88, "WorkSessions", Migration0088],
+  [89, "ProjectTeams", Migration0089],
+  [90, "BotRoutines", Migration0090],
+  [91, "BotToolAccess", Migration0091],
+  [92, "BotCapabilities", Migration0092],
+  [93, "BotMemory", Migration0093],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

@@ -50,6 +50,7 @@ import {
   deriveCommittedServerUserMessageIds,
   deriveComposerSendState,
   deriveLockedProvider,
+  resolveDraftHeroState,
   hasServerAcknowledgedLocalDispatch,
   waitForRevertedMessage,
 } from "./ChatView.logic";
@@ -58,6 +59,22 @@ const environmentId = EnvironmentId.make("environment-local");
 const projectId = ProjectId.make("project-1");
 const threadId = ThreadId.make("thread-1");
 const now = "2026-03-29T00:00:00.000Z";
+
+it("shows the welcome composer for an empty persisted assistant and docks it once work begins", () => {
+  const empty = {
+    isLocalDraftThread: false,
+    isPersonalChat: true,
+    hasTimelineEntries: false,
+    isWorking: false,
+    draftHeroDockRequested: false,
+    backgroundSubmissionPending: false,
+  };
+  expect(resolveDraftHeroState(empty)).toBe(true);
+  expect(resolveDraftHeroState({ ...empty, isPersonalChat: false })).toBe(false);
+  expect(resolveDraftHeroState({ ...empty, hasTimelineEntries: true })).toBe(false);
+  expect(resolveDraftHeroState({ ...empty, isWorking: true })).toBe(false);
+  expect(resolveDraftHeroState({ ...empty, draftHeroDockRequested: true })).toBe(false);
+});
 
 function makeThread(overrides: Partial<Thread> = {}): Thread {
   return makeThreadFixture({

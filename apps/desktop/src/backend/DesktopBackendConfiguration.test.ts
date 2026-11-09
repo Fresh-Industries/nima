@@ -283,6 +283,9 @@ describe("DesktopBackendConfiguration", () => {
         prefix: "t3-desktop-backend-config-test-",
       });
       const resourcesPath = path.join(baseDir, "resources");
+      const studioEngine = path.join(resourcesPath, "studio", "bara-cli.exe");
+      yield* fileSystem.makeDirectory(path.dirname(studioEngine), { recursive: true });
+      yield* fileSystem.writeFileString(studioEngine, "bundled engine fixture");
 
       const config = yield* Effect.gen(function* () {
         const configuration = yield* DesktopBackendConfiguration.DesktopBackendConfiguration;
@@ -318,6 +321,7 @@ describe("DesktopBackendConfiguration", () => {
         path.join(resourcesPath, "server.asar/apps/server/dist/bin.mjs"),
       );
       assert.equal(config.env.ELECTRON_RUN_AS_NODE, "1");
+      assert.equal(config.env.BARA_STUDIO_CLI, studioEngine);
     }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 

@@ -1,3 +1,4 @@
+import * as BotDelegation from "../bots/BotDelegation.ts";
 import * as DocumentText from "../provider/DocumentText.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -114,9 +115,25 @@ const layerLaunches = Layer.effect(
 );
 
 const layerTools = Layer.mergeAll(
-  McpHttpServer.layerOrchestratorToolkit,
+  McpHttpServer.layerOrchestratorToolkit.pipe(
+    Layer.provide(
+      Layer.succeed(BotDelegation.BotDelegation, {
+        reserve: () => Effect.succeed(null),
+        reconcile: () => Effect.void,
+        assertLocal: () => Effect.void,
+      }),
+    ),
+  ),
   McpHttpServer.layerThreadToolkit,
-  McpHttpServer.layerProjectRegistration,
+  McpHttpServer.layerProjectRegistration.pipe(
+    Layer.provide(
+      Layer.succeed(BotDelegation.BotDelegation, {
+        reserve: () => Effect.succeed(null),
+        reconcile: () => Effect.void,
+        assertLocal: () => Effect.void,
+      }),
+    ),
+  ),
 ).pipe(
   Layer.provide(DocumentText.layer.pipe(Layer.provideMerge(NodeServices.layer))),
   Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),

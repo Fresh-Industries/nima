@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./desktopBranding": {
+      "types": "./src/desktopBranding.ts",
+      "import": "./src/desktopBranding.ts"
+    },
     "./changedFileKind": {
       "types": "./src/changedFileKind.ts",
       "import": "./src/changedFileKind.ts"

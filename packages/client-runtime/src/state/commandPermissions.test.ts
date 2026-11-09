@@ -8,6 +8,8 @@ import { describe, expect, it } from "@effect/vitest";
 import { vi } from "vite-plus/test";
 import {
   AuthAccessReadScope,
+  AuthFilesystemWriteScope,
+  AuthFilesystemReadScope,
   AuthAccessWriteScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
@@ -50,8 +52,8 @@ const grant = (allowed: boolean): AuthSessionState => ({
     sessionMethods: [],
     sessionCookieName: "test",
   },
-  scopes: allowed ? [AuthOrchestrationOperateScope] : [],
-  permissions: allowed ? [AuthOrchestrationOperateScope] : [],
+  scopes: allowed ? [AuthOrchestrationOperateScope, AuthFilesystemWriteScope] : [],
+  permissions: allowed ? [AuthOrchestrationOperateScope, AuthFilesystemWriteScope] : [],
 });
 const runtime = Atom.runtime(
   Layer.succeed(EnvironmentRegistry, {
@@ -122,11 +124,19 @@ describe("command permissions", () => {
     ),
   );
 
-  it.effect("requires the destination settings grant to check OTLP endpoints", () =>
+  it.effect.each([
+    WS_METHODS.serverCheckOtlpEndpoint,
+    WS_METHODS.personalAgentWrite,
+    WS_METHODS.projectTeamsWrite,
+    WS_METHODS.botsCreate,
+    WS_METHODS.botsWrite,
+    WS_METHODS.botsResolveApproval,
+    WS_METHODS.personalAgentRemember,
+  ])("requires the destination settings grant for %s", (method) =>
     Effect.scoped(
       Effect.gen(function* () {
         const registry = yield* setup;
-        const check = createCommandPermissions(runtime, WS_METHODS.serverCheckOtlpEndpoint);
+        const check = createCommandPermissions(runtime, method);
         registry.set(sessions(env), AsyncResult.success(grant(true)));
         expect(registry.get(check.permissionAtom(env))).toBe(false);
         registry.set(
@@ -143,21 +153,61 @@ describe("command permissions", () => {
     ),
   );
 
-  it.effect.each([WS_METHODS.scheduledTasksDelete, ORCHESTRATION_V2_WS_METHODS.stopWorkflow])(
-    "uses the target grant for both availability and execution of %s",
-    (method) =>
+  it.effect.each([
+    WS_METHODS.botsOpen,
+    WS_METHODS.scheduledTasksDelete,
+    ORCHESTRATION_V2_WS_METHODS.stopWorkflow,
+    WS_METHODS.workspaceNotesWrite,
+    WS_METHODS.workspacePagesWrite,
+    WS_METHODS.workspaceReviewWrite,
+    WS_METHODS.workspaceWorkCreate,
+    WS_METHODS.workspaceGoalsWrite,
+    WS_METHODS.workspaceGoalsProgress,
+  ])("uses the target grant for both availability and execution of %s", (method) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = yield* setup;
+        const permissions = createCommandPermissions(runtime, method);
+        registry.set(sessions(env), AsyncResult.success(grant(true)));
+        expect(registry.get(permissions.permissionAtom(env))).toBe(true);
+        expect(permissions.permissionAtom(env)).toBe(permissions.permissionAtom(env));
+        yield* permissions.authorize(registry, env);
+        registry.set(sessions(other), AsyncResult.success(grant(false)));
+        expect(registry.get(permissions.permissionAtom(other))).toBe(false);
+        const denied = yield* permissions.authorize(registry, other).pipe(Effect.flip);
+        expect(denied._tag).toBe("EnvironmentAuthorizationError");
+      }),
+    ),
+  );
+  it.effect(
+    "content handoffs require the destination write grant and their additional read grant",
+    () =>
       Effect.scoped(
         Effect.gen(function* () {
           const registry = yield* setup;
-          const permissions = createCommandPermissions(runtime, method);
-          registry.set(sessions(env), AsyncResult.success(grant(true)));
-          expect(registry.get(permissions.permissionAtom(env))).toBe(true);
-          expect(permissions.permissionAtom(env)).toBe(permissions.permissionAtom(env));
-          yield* permissions.authorize(registry, env);
-          registry.set(sessions(other), AsyncResult.success(grant(false)));
-          expect(registry.get(permissions.permissionAtom(other))).toBe(false);
-          const denied = yield* permissions.authorize(registry, other).pipe(Effect.flip);
-          expect(denied._tag).toBe("EnvironmentAuthorizationError");
+          for (const [method, scope] of [
+            [WS_METHODS.workspacePagesCapture, AuthOrchestrationReadScope],
+            [WS_METHODS.studioMutate, AuthFilesystemReadScope],
+            [WS_METHODS.studioExport, AuthFilesystemReadScope],
+            [WS_METHODS.personalAgentOpen, AuthSettingsWriteScope],
+          ] as const) {
+            const capture = createCommandPermissions(runtime, method);
+            registry.set(sessions(env), AsyncResult.success(grant(true)));
+            expect(registry.get(capture.permissionAtom(env))).toBe(false);
+            expect(
+              (yield* capture.authorize(registry, env).pipe(Effect.flip)).requiredPermission,
+            ).toBe(scope);
+            registry.set(
+              sessions(env),
+              AsyncResult.success({
+                ...grant(true),
+                scopes: [...(grant(true).scopes ?? []), scope],
+                permissions: [...(grant(true).permissions ?? []), scope],
+              }),
+            );
+            expect(registry.get(capture.permissionAtom(env))).toBe(true);
+            yield* capture.authorize(registry, env);
+          }
         }),
       ),
   );

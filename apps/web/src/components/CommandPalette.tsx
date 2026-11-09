@@ -103,7 +103,6 @@ import {
   copyPromptLink,
   promptLinkRepositoryOf,
 } from "./promptLinks/copyPromptLink";
-import { useClientSettings } from "../hooks/useSettings";
 import { useStableCallback } from "../hooks/useStableCallback";
 import { readLocalApi } from "../localApi";
 import { desktopLocalBackendId } from "../connection/desktopLocal";
@@ -134,7 +133,6 @@ import {
   useEnvironmentThreadRefs,
   useProjects,
   useServerConfigs,
-  useVisibleThreadShells,
   waitForProject,
 } from "../state/entities";
 import { visibleLinkedThreads } from "@t3tools/client-runtime/state/threads";
@@ -159,7 +157,6 @@ import {
   useCommandPaletteStore,
 } from "../commandPaletteStore";
 import { PULL_REQUESTS_PANEL_REF, useRightPanelStore } from "../rightPanelStore";
-import { getLatestThreadForProject, sortThreads } from "@t3tools/client-runtime/state/thread-sort";
 import {
   cn,
   getLocalFileManagerName,
@@ -214,7 +211,6 @@ import {
 import { resolveEnvironmentOptionLabel } from "./BranchToolbar.logic";
 import { CommandPaletteContent } from "./CommandPaletteContent";
 import {
-  selectCommandPaletteClientSettings,
   useEnvironmentLookups,
   useProjectLookups,
   useSortedProjectGroups,
@@ -430,7 +426,6 @@ function OpenCommandPaletteDialog(props: {
     highlightClearedRef.current = true;
     setHighlightedItemValue(null);
   }
-  const clientSettings = useClientSettings(selectCommandPaletteClientSettings);
   const createProject = useAtomCommand(projectEnvironment.create, {
     reportFailure: false,
   });
@@ -493,7 +488,6 @@ function OpenCommandPaletteDialog(props: {
     if (activeThreadReferenceCopyTarget === null) return;
     await copyThreadReference(activeThreadReferenceCopyTarget);
   };
-  const threads = useVisibleThreadShells();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const providersByEnvironment = useEnvironmentProviders();
   const { changeThemeItem, changeAppearanceItem, themeEditorItem } = useCommandPaletteThemeItems();
@@ -764,37 +758,10 @@ function OpenCommandPaletteDialog(props: {
   );
 
   const openProjectFromSearch = async (project: (typeof projects)[number]) => {
-    const group = projectGroupByTargetKey.get(`${project.environmentId}:${project.id}`);
-    const groupedProjectKeys = group
-      ? new Set(
-          group.memberProjectRefs.map(
-            (projectRef) => `${projectRef.environmentId}:${projectRef.projectId}`,
-          ),
-        )
-      : null;
-    const latestThread = groupedProjectKeys
-      ? (sortThreads(
-          threads.filter(
-            (thread) =>
-              thread.archivedAt === null &&
-              groupedProjectKeys.has(`${thread.environmentId}:${thread.projectId}`),
-          ),
-          clientSettings.sidebarThreadSortOrder,
-        )[0] ?? null)
-      : getLatestThreadForProject(
-          threads.filter((thread) => thread.environmentId === project.environmentId),
-          project.id,
-          clientSettings.sidebarThreadSortOrder,
-        );
-    if (latestThread) {
-      await navigate({
-        to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(scopeThreadRef(latestThread.environmentId, latestThread.id)),
-      });
-      return;
-    }
-
-    await handleNewThread(scopeProjectRef(project.environmentId, project.id));
+    await navigate({
+      to: "/work",
+      search: { environmentId: project.environmentId, projectId: project.id },
+    });
   };
 
   // Pinning from a row keeps rows in place while the palette is open.
@@ -1008,7 +975,7 @@ function OpenCommandPaletteDialog(props: {
         value: `action:add-project:${environmentId}:new`,
         searchTerms: ["new project", "create", "empty", "repository", "git init"],
         title: "New project",
-        description: "Start a new Git repository from a name",
+        description: "Choose a name. Bara creates its folder.",
         icon: <FolderGit2Icon className={ITEM_ICON_CLASS} />,
         keepOpen: true,
         run: async () => {
@@ -1810,34 +1777,10 @@ function OpenCommandPaletteDialog(props: {
           input: { projectId: existing.id, archived: false },
         }).then((result) => reportProjectFailure("Failed to unarchive project", result));
       }
-      const latestThread = getLatestThreadForProject(
-        threads.filter((thread) => thread.environmentId === existing.environmentId),
-        existing.id,
-        clientSettings.sidebarThreadSortOrder,
-      );
-      if (latestThread && latestThread.settledOverride !== "settled") {
-        await navigate({
-          to: "/$environmentId/$threadId",
-          params: buildThreadRouteParams(
-            scopeThreadRef(latestThread.environmentId, latestThread.id),
-          ),
-        });
-      } else {
-        const navigationResult = await settlePromise(() =>
-          handleNewThread(scopeProjectRef(existing.environmentId, existing.id)),
-        );
-        if (navigationResult._tag === "Failure") {
-          const error = squashAtomCommandFailure(navigationResult);
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Failed to open project",
-              description: error instanceof Error ? error.message : "An error occurred.",
-            }),
-          );
-          return;
-        }
-      }
+      await navigate({
+        to: "/work",
+        search: { environmentId: existing.environmentId, projectId: existing.id },
+      });
       setOpen(false);
       return;
     }
@@ -1878,7 +1821,7 @@ function OpenCommandPaletteDialog(props: {
     }
 
     const navigationResult = await settlePromise(() =>
-      handleNewThread(scopeProjectRef(input.environmentId, projectId)),
+      navigate({ to: "/work", search: { environmentId: input.environmentId, projectId } }),
     );
     if (navigationResult._tag === "Failure") {
       const error = squashAtomCommandFailure(navigationResult);
@@ -2117,7 +2060,12 @@ function OpenCommandPaletteDialog(props: {
     );
     const projectRef = scopeProjectRef(addProjectCloneFlow.environmentId, projectId);
     await waitForProject(projectRef, 3_000).catch(() => null);
-    const navigationResult = await settlePromise(() => handleNewThread(projectRef));
+    const navigationResult = await settlePromise(() =>
+      navigate({
+        to: "/work",
+        search: { environmentId: projectRef.environmentId, projectId: projectRef.projectId },
+      }),
+    );
     if (navigationResult._tag === "Failure") {
       const error = squashAtomCommandFailure(navigationResult);
       toastManager.add(

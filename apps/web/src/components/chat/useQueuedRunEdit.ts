@@ -1,3 +1,4 @@
+import type { ProjectContextRecord } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import {
   makeQueuedRunEditStore,
@@ -81,6 +82,7 @@ interface QueuedRunEditContent {
   readonly previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
   readonly threadContexts: ReadonlyArray<ThreadContextRecord>;
   readonly environmentContexts: ReadonlyArray<EnvironmentContextRecord>;
+  readonly projectContexts?: ReadonlyArray<ProjectContextRecord>;
 }
 
 function queuedEditDraftTarget(routeThreadRef: ScopedThreadRef, runId: RunId) {
@@ -139,6 +141,7 @@ async function submitQueuedRunEdit(input: {
         previewAnnotations: content.previewAnnotations,
         threadContexts: content.threadContexts,
         environmentContexts: content.environmentContexts,
+        projectContexts: content.projectContexts ?? [],
         attachments: newAttachments.map((attachment, index) => ({
           attachment,
           attachmentId: uploads[editing.existingAttachments.length + index]?.id ?? attachment.id,

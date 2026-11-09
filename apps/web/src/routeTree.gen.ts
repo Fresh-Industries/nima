@@ -19,10 +19,14 @@ import { Route as ChatIndexRouteImport } from './routes/_chat.index'
 import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$projectKey'
 import { Route as ChatWorkRouteImport } from './routes/_chat.work'
 import { Route as ChatUsageRouteImport } from './routes/_chat.usage'
+import { Route as ChatStudioRouteImport } from './routes/_chat.studio'
+import { Route as ChatSpacesRouteImport } from './routes/_chat.spaces'
 import { Route as ChatSettingsRouteImport } from './routes/_chat.settings'
 import { Route as ChatPullRequestsRouteImport } from './routes/_chat.pull-requests'
 import { Route as ChatNewRouteImport } from './routes/_chat.new'
 import { Route as ChatInboxRouteImport } from './routes/_chat.inbox'
+import { Route as ChatGoalsRouteImport } from './routes/_chat.goals'
+import { Route as ChatBotsRouteImport } from './routes/_chat.bots'
 import { Route as ChatSettingsWorktreesRouteImport } from './routes/_chat.settings.worktrees'
 import { Route as ChatSettingsThreadsRouteImport } from './routes/_chat.settings.threads'
 import { Route as ChatSettingsStorageRouteImport } from './routes/_chat.settings.storage'
@@ -101,6 +105,16 @@ const ChatUsageRoute = ChatUsageRouteImport.update({
   path: '/usage',
   getParentRoute: () => ChatRoute,
 } as any)
+const ChatStudioRoute = ChatStudioRouteImport.update({
+  id: '/studio',
+  path: '/studio',
+  getParentRoute: () => ChatRoute,
+} as any)
+const ChatSpacesRoute = ChatSpacesRouteImport.update({
+  id: '/spaces',
+  path: '/spaces',
+  getParentRoute: () => ChatRoute,
+} as any)
 const ChatSettingsRoute = ChatSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -119,6 +133,16 @@ const ChatNewRoute = ChatNewRouteImport.update({
 const ChatInboxRoute = ChatInboxRouteImport.update({
   id: '/inbox',
   path: '/inbox',
+  getParentRoute: () => ChatRoute,
+} as any)
+const ChatGoalsRoute = ChatGoalsRouteImport.update({
+  id: '/goals',
+  path: '/goals',
+  getParentRoute: () => ChatRoute,
+} as any)
+const ChatBotsRoute = ChatBotsRouteImport.update({
+  id: '/bots',
+  path: '/bots',
   getParentRoute: () => ChatRoute,
 } as any)
 const ChatSettingsWorktreesRoute = ChatSettingsWorktreesRouteImport.update({
@@ -274,10 +298,14 @@ export interface FileRoutesByFullPath {
   '/guest': typeof GuestRoute
   '/pair': typeof PairRoute
   '/welcome': typeof WelcomeRoute
+  '/bots': typeof ChatBotsRoute
+  '/goals': typeof ChatGoalsRoute
   '/inbox': typeof ChatInboxRoute
   '/new': typeof ChatNewRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/settings': typeof ChatSettingsRouteWithChildren
+  '/spaces': typeof ChatSpacesRoute
+  '/studio': typeof ChatStudioRoute
   '/usage': typeof ChatUsageRoute
   '/work': typeof ChatWorkRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
@@ -316,10 +344,14 @@ export interface FileRoutesByTo {
   '/guest': typeof GuestRoute
   '/pair': typeof PairRoute
   '/welcome': typeof WelcomeRoute
+  '/bots': typeof ChatBotsRoute
+  '/goals': typeof ChatGoalsRoute
   '/inbox': typeof ChatInboxRoute
   '/new': typeof ChatNewRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/settings': typeof ChatSettingsRouteWithChildren
+  '/spaces': typeof ChatSpacesRoute
+  '/studio': typeof ChatStudioRoute
   '/usage': typeof ChatUsageRoute
   '/work': typeof ChatWorkRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
@@ -361,10 +393,14 @@ export interface FileRoutesById {
   '/guest': typeof GuestRoute
   '/pair': typeof PairRoute
   '/welcome': typeof WelcomeRoute
+  '/_chat/bots': typeof ChatBotsRoute
+  '/_chat/goals': typeof ChatGoalsRoute
   '/_chat/inbox': typeof ChatInboxRoute
   '/_chat/new': typeof ChatNewRoute
   '/_chat/pull-requests': typeof ChatPullRequestsRoute
   '/_chat/settings': typeof ChatSettingsRouteWithChildren
+  '/_chat/spaces': typeof ChatSpacesRoute
+  '/_chat/studio': typeof ChatStudioRoute
   '/_chat/usage': typeof ChatUsageRoute
   '/_chat/work': typeof ChatWorkRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
@@ -407,10 +443,14 @@ export interface FileRouteTypes {
     | '/guest'
     | '/pair'
     | '/welcome'
+    | '/bots'
+    | '/goals'
     | '/inbox'
     | '/new'
     | '/pull-requests'
     | '/settings'
+    | '/spaces'
+    | '/studio'
     | '/usage'
     | '/work'
     | '/projects/$projectKey'
@@ -449,10 +489,14 @@ export interface FileRouteTypes {
     | '/guest'
     | '/pair'
     | '/welcome'
+    | '/bots'
+    | '/goals'
     | '/inbox'
     | '/new'
     | '/pull-requests'
     | '/settings'
+    | '/spaces'
+    | '/studio'
     | '/usage'
     | '/work'
     | '/projects/$projectKey'
@@ -493,10 +537,14 @@ export interface FileRouteTypes {
     | '/guest'
     | '/pair'
     | '/welcome'
+    | '/_chat/bots'
+    | '/_chat/goals'
     | '/_chat/inbox'
     | '/_chat/new'
     | '/_chat/pull-requests'
     | '/_chat/settings'
+    | '/_chat/spaces'
+    | '/_chat/studio'
     | '/_chat/usage'
     | '/_chat/work'
     | '/projects/$projectKey'
@@ -613,6 +661,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatUsageRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/_chat/studio': {
+      id: '/_chat/studio'
+      path: '/studio'
+      fullPath: '/studio'
+      preLoaderRoute: typeof ChatStudioRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/_chat/spaces': {
+      id: '/_chat/spaces'
+      path: '/spaces'
+      fullPath: '/spaces'
+      preLoaderRoute: typeof ChatSpacesRouteImport
+      parentRoute: typeof ChatRoute
+    }
     '/_chat/settings': {
       id: '/_chat/settings'
       path: '/settings'
@@ -639,6 +701,20 @@ declare module '@tanstack/react-router' {
       path: '/inbox'
       fullPath: '/inbox'
       preLoaderRoute: typeof ChatInboxRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/_chat/goals': {
+      id: '/_chat/goals'
+      path: '/goals'
+      fullPath: '/goals'
+      preLoaderRoute: typeof ChatGoalsRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/_chat/bots': {
+      id: '/_chat/bots'
+      path: '/bots'
+      fullPath: '/bots'
+      preLoaderRoute: typeof ChatBotsRouteImport
       parentRoute: typeof ChatRoute
     }
     '/_chat/settings/worktrees': {
@@ -903,10 +979,14 @@ const ChatSettingsRouteWithChildren = ChatSettingsRoute._addFileChildren(
 )
 
 interface ChatRouteChildren {
+  ChatBotsRoute: typeof ChatBotsRoute
+  ChatGoalsRoute: typeof ChatGoalsRoute
   ChatInboxRoute: typeof ChatInboxRoute
   ChatNewRoute: typeof ChatNewRoute
   ChatPullRequestsRoute: typeof ChatPullRequestsRoute
   ChatSettingsRoute: typeof ChatSettingsRouteWithChildren
+  ChatSpacesRoute: typeof ChatSpacesRoute
+  ChatStudioRoute: typeof ChatStudioRoute
   ChatUsageRoute: typeof ChatUsageRoute
   ChatWorkRoute: typeof ChatWorkRoute
   ChatIndexRoute: typeof ChatIndexRoute
@@ -915,10 +995,14 @@ interface ChatRouteChildren {
 }
 
 const ChatRouteChildren: ChatRouteChildren = {
+  ChatBotsRoute: ChatBotsRoute,
+  ChatGoalsRoute: ChatGoalsRoute,
   ChatInboxRoute: ChatInboxRoute,
   ChatNewRoute: ChatNewRoute,
   ChatPullRequestsRoute: ChatPullRequestsRoute,
   ChatSettingsRoute: ChatSettingsRouteWithChildren,
+  ChatSpacesRoute: ChatSpacesRoute,
+  ChatStudioRoute: ChatStudioRoute,
   ChatUsageRoute: ChatUsageRoute,
   ChatWorkRoute: ChatWorkRoute,
   ChatIndexRoute: ChatIndexRoute,

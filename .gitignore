@@ -48,3 +48,8 @@ node_modules/
 
 # pnpm content-addressable store; never belongs in the repo.
 .pnpm-store/
+
+# Local visual review captures and browser-test output.
+/design/ux-audit/
+/apps/web/.vitest/
+/apps/web/test/ux-audit.config.ts

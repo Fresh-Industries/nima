@@ -24,6 +24,7 @@ import { resolveWorkGroupScrollAnchor } from "@t3tools/client-runtime/work-log/s
 import type { WorkflowOpening } from "@t3tools/client-runtime/state/subagentRuntime";
 import { observeResize } from "~/lib/observeResize";
 import { useStableCallback } from "~/hooks/useStableCallback";
+import { timelineDayLabels } from "../../nima/dailyHistory";
 
 const NOOP_USE_ARTIFACT_TEMPLATE = () => {};
 const EMPTY_PENDING_APPROVALS: ReadonlyArray<PendingApproval> = [];
@@ -309,6 +310,8 @@ interface MessagesTimelineProps {
   emptyPlaceholderInset: number;
   topFadeEnabled?: boolean;
   historyControls?: MessagesTimelineHistoryControls | undefined;
+  historyHeader?: ReactNode;
+  assistantDays?: { timezone: string; today: string } | undefined;
   findExpanded?: boolean;
   findQuery?: string;
   activeFindMatch?: ThreadFindMatch | null;
@@ -403,6 +406,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
   emptyPlaceholderInset,
   topFadeEnabled = false,
   historyControls,
+  historyHeader,
+  assistantDays,
 }: MessagesTimelineProps) {
   const listIdentityKey = displayThreadKey ?? routeThreadKey;
   // Snapshot restore positions on identity changes; ongoing scroll writes must not move them.
@@ -681,6 +686,9 @@ const ConversationTimeline = memo(function ConversationTimeline({
     worktreeSetup,
   });
   const rows = useStableRows(rawRows, listIdentityKey);
+  const dayLabels = assistantDays
+    ? timelineDayLabels(rows, assistantDays.timezone, assistantDays.today)
+    : null;
   const matchedApprovalRequestIds = new Set<string>();
   for (const row of pendingApprovalRequestIds.size > 0 ? rows : []) {
     const entries =
@@ -1113,6 +1121,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   const listHeader = (
     <>
       {parentThreadLink === null ? listHeaderLeadingContent : null}
+      {historyHeader ? <div onClickCapture={navigateTimeline}>{historyHeader}</div> : null}
       {historyControls ? <TimelineHistoryControl {...historyControls} /> : null}
       {parentThreadLink !== null ? listHeaderLeadingContent : null}
     </>
@@ -1225,6 +1234,14 @@ const ConversationTimeline = memo(function ConversationTimeline({
         onPauseCapture={(event) => onAudioPlaybackChange(item.id, event)}
         onEndedCapture={(event) => onAudioPlaybackChange(item.id, event)}
       >
+        {dayLabels?.has(item.id) && (
+          <div
+            className="chat-content-lane py-4 text-center text-xs text-muted-foreground"
+            data-chat-day={dayLabels.get(item.id)}
+          >
+            {dayLabels.get(item.id)}
+          </div>
+        )}
         <div
           ref={observeLaneWidth}
           className="chat-content-lane overflow-x-clip"
@@ -1270,6 +1287,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
       return (
         <>
           {activityAnnouncer}
+          {historyHeader}
           <div className="h-full min-h-0 bg-background" data-timeline-loading="true" />
         </>
       );
@@ -1277,6 +1295,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     return (
       <>
         {activityAnnouncer}
+        {historyHeader}
         <div
           className="flex h-full items-center justify-center ps-(--chat-lane-inset-start) pe-(--chat-lane-inset-end)"
           style={{ paddingBottom: emptyPlaceholderInset }}
