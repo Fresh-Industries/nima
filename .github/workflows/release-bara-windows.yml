@@ -1,0 +1,181 @@
+name: Bara Windows release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+    branches: ["feature/bara-ux-transformation"]
+    paths: [".github/workflows/release-bara-windows.yml"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to release
+        required: true
+        default: v0.1.7
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bara-windows-${{ github.ref_type == 'tag' && github.ref_name || inputs.tag || 'v0.1.7' }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    if: github.repository == 'Fresh-Industries/nima'
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag || 'v0.1.7' }}
+      BARA_DESKTOP_UPDATE_REPOSITORY: Fresh-Industries/nima
+      T3CODE_TELEMETRY_CHANNEL: dev
+
+    steps:
+      - name: Validate release tag
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+
+      - name: Check out tagged Bara source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          persist-credentials: false
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Verify version and source
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          const version=process.env.RELEASE_TAG.slice(1);
+          for(const file of ['apps/desktop/package.json','apps/server/package.json','apps/web/package.json','packages/contracts/package.json'])
+            assert.equal(JSON.parse(fs.readFileSync(file,'utf8')).version,version,file);
+          JS
+          if [[ "$RELEASE_TAG" == v0.1.7 ]]; then
+            [[ "$(git rev-parse HEAD)" == fb6d5fa097a83667effd9bb8dff4a1c99c4070f8 ]]
+          fi
+
+      - name: Set up workspace dependencies
+        uses: ./.github/actions/setup-ci-deps
+        with:
+          install-args: --filter=@t3tools/desktop... --filter=t3... --filter=@t3tools/scripts...
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: stable
+          targets: x86_64-pc-windows-msvc
+
+      - name: Check out the separate Studio engine
+        uses: actions/checkout@v6
+        with:
+          repository: Fresh-Industries/Bara
+          ref: 9f93da6f7c9e2aaad7531df5dec5b6cbf7e5773a
+          path: .generated/studio-source
+          persist-credentials: false
+
+      - name: Build the Studio CLI
+        run: |
+          set -euo pipefail
+          cargo build --manifest-path .generated/studio-source/Cargo.toml --locked --release --package bara-cli
+          engine="$(pwd)/.generated/studio-source/target/release/bara-cli.exe"
+          [[ -f "$engine" ]]
+          echo "BARA_STUDIO_ENGINE_BINARY=$(cygpath -w "$engine")" >> "$GITHUB_ENV"
+
+      - name: Build and validate Windows desktop
+        run: |
+          set -euo pipefail
+          node scripts/build-desktop-artifact.ts --platform win --target nsis --arch x64 --output-dir release
+
+      - name: Validate update metadata and prepare checksums
+        working-directory: scripts
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import crypto from 'node:crypto';
+          import assert from 'node:assert/strict';
+          import * as Schema from 'effect/Schema';
+          import { fromYaml } from '@t3tools/shared/schemaYaml';
+          const version=process.env.RELEASE_TAG.slice(1);
+          const folder=path.resolve('../release');
+          const name='Bara-'+version+'-x64.exe';
+          const manifest=Schema.decodeUnknownSync(fromYaml(Schema.Struct({
+            version:Schema.String,path:Schema.String,sha512:Schema.String,
+            files:Schema.Array(Schema.Struct({url:Schema.String,sha512:Schema.String,size:Schema.Number}))
+          })))(fs.readFileSync(path.join(folder,'latest.yml'),'utf8'));
+          assert.equal(manifest.version,version);
+          assert.equal(manifest.path,name);
+          const bytes=fs.readFileSync(path.join(folder,name));
+          const digest=crypto.createHash('sha512').update(bytes).digest('base64');
+          assert.equal(manifest.sha512,digest);
+          const entry=manifest.files.find(file=>file.url===name);
+          assert.ok(entry);assert.equal(entry.sha512,digest);assert.equal(entry.size,bytes.length);
+          const engineName='bara-studio-engine-windows-x64.exe';
+          fs.copyFileSync(process.env.BARA_STUDIO_ENGINE_BINARY,path.join(folder,engineName));
+          const files=[name,name+'.blockmap','latest.yml',engineName];
+          const sums=files.map(file=>crypto.createHash('sha256').update(fs.readFileSync(path.join(folder,file))).digest('hex')+'  '+file);
+          fs.writeFileSync(path.join(folder,'SHA256SUMS'),sums.join('\n')+'\n');
+          fs.mkdirSync('../.generated',{recursive:true});
+          fs.writeFileSync('../.generated/bara-release-notes.md',[
+            'Bara '+version+' — Windows x64 desktop beta.',
+            '',
+            'Download Bara-'+version+'-x64.exe and install it over your existing Bara installation. Existing Bara data paths are preserved.',
+            '',
+            'This release includes Bara’s GitHub update feed. Older local 0.1.6 builds need this one-time manual installation. Afterward, Settings → About → Check for Updates can download and install future Bara releases.',
+            '',
+            'Includes the personal assistant and scoped memory, Bots and routines, Work and Inbox, Goals, Library, Studio, project Work navigation, and continuous previous-day chat history.',
+            '',
+            'The Windows beta is unsigned. A supported provider must be configured to execute agent turns. Studio video exports require FFmpeg. Plain T3 SSH servers retain their compatible runtime; Bara-specific coordinators and Inbox require a Bara server.',
+            '',
+            'T3 Code’s MIT license and attribution remain intact. Studio is built separately from Fresh-Industries/Bara at 9f93da6f7c9e2aaad7531df5dec5b6cbf7e5773a. Its extra CLI asset is for packaging; normal use needs only the installer.',
+            '',
+            'SHA256SUMS covers the installer, blockmap, update metadata, and Studio engine.'
+          ].join('\n'));
+          console.log('Validated installer version, byte count and SHA-512 against latest.yml.');
+          JS
+
+      - name: Prepare draft release and upload assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft > .generated/existing-release.json 2>/dev/null; then
+            node --input-type=module -e "import fs from 'node:fs'; if (!JSON.parse(fs.readFileSync('.generated/existing-release.json')).isDraft) throw Error('This release is already published; create a new version instead.');"
+          else
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --title "Bara ${RELEASE_TAG#v} — Windows beta" --notes-file .generated/bara-release-notes.md
+          fi
+          version="${RELEASE_TAG#v}"
+          gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --clobber \
+            "release/Bara-$version-x64.exe" \
+            "release/Bara-$version-x64.exe.blockmap" \
+            release/latest.yml release/SHA256SUMS release/bara-studio-engine-windows-x64.exe
+
+      - name: Verify uploaded assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir .generated/upload-check \
+            --pattern "Bara-${RELEASE_TAG#v}-x64.exe" \
+            --pattern "Bara-${RELEASE_TAG#v}-x64.exe.blockmap" \
+            --pattern latest.yml --pattern SHA256SUMS --pattern bara-studio-engine-windows-x64.exe
+          cd .generated/upload-check
+          sha256sum -c SHA256SUMS
+
+      - name: Publish Bara release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
