@@ -77,19 +77,27 @@ jobs:
           toolchain: stable
           targets: x86_64-pc-windows-msvc
 
-      - name: Check out the separate Studio engine
-        uses: actions/checkout@v6
-        with:
-          repository: Fresh-Industries/Bara
-          ref: 9f93da6f7c9e2aaad7531df5dec5b6cbf7e5773a
-          path: .generated/studio-source
-          persist-credentials: false
-
-      - name: Build the Studio CLI
+      - name: Acquire the verified Studio CLI
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          cargo build --manifest-path .generated/studio-source/Cargo.toml --locked --release --package bara-cli
-          engine="$(pwd)/.generated/studio-source/target/release/bara-cli.exe"
+          mkdir -p .generated/studio-engine
+          if [[ "$RELEASE_TAG" == v0.1.7 ]]; then
+            installer=.generated/studio-engine/bootstrap.exe
+            curl -fL --retry 3 --connect-timeout 20 --max-time 240 \
+              https://less-tarsier.runlocal.eu/downloads/Bara-0.1.6-20261109-chat-fixes-x64.exe \
+              -o "$installer"
+            echo "d0c5d027a6165dedcc2f99a520c1ca02abb0eda245a1b7bf374f519a0918efa6  $installer" | sha256sum -c -
+            7z x -y -o.generated/studio-engine/installer "$installer" '$PLUGINSDIR/app-64.7z'
+            7z x -y -o.generated/studio-engine/app '.generated/studio-engine/installer/$PLUGINSDIR/app-64.7z' resources/studio/bara-cli.exe
+            engine="$(pwd)/.generated/studio-engine/app/resources/studio/bara-cli.exe"
+          else
+            gh release download v0.1.7 --repo "$GITHUB_REPOSITORY" --dir .generated/studio-engine \
+              --pattern bara-studio-engine-windows-x64.exe --pattern SHA256SUMS
+            (cd .generated/studio-engine && grep '  bara-studio-engine-windows-x64.exe$' SHA256SUMS | sha256sum -c -)
+            engine="$(pwd)/.generated/studio-engine/bara-studio-engine-windows-x64.exe"
+          fi
           [[ -f "$engine" ]]
           echo "BARA_STUDIO_ENGINE_BINARY=$(cygpath -w "$engine")" >> "$GITHUB_ENV"
 
@@ -140,7 +148,7 @@ jobs:
             '',
             'The Windows beta is unsigned. A supported provider must be configured to execute agent turns. Studio video exports require FFmpeg. Plain T3 SSH servers retain their compatible runtime; Bara-specific coordinators and Inbox require a Bara server.',
             '',
-            'T3 Code’s MIT license and attribution remain intact. Studio is built separately from Fresh-Industries/Bara at 9f93da6f7c9e2aaad7531df5dec5b6cbf7e5773a. Its extra CLI asset is for packaging; normal use needs only the installer.',
+            'T3 Code’s MIT license and attribution remain intact. The separate Studio CLI is reused from the verified Bara bootstrap installer, with its digest in SHA256SUMS. Its extra asset is for packaging; normal use needs only the installer.',
             '',
             'SHA256SUMS covers the installer, blockmap, update metadata, and Studio engine.'
           ].join('\n'));
