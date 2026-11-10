@@ -3,6 +3,8 @@ name: Bara desktop and Linux backend release
 on:
   push:
     tags: ["v*.*.*"]
+    branches: ["feature/bara-ux-transformation"]
+    paths: [".github/workflows/release-bara-windows.yml"]
   workflow_dispatch:
     inputs:
       tag:
@@ -19,8 +21,56 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  bootstrap:
+    if: github.repository == 'Fresh-Industries/nima' && github.event_name == 'push' && github.ref_type == 'branch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check the bootstrap release
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          draft="$(gh release view v0.1.8 --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)"
+          echo "pending=$draft" >> "$GITHUB_OUTPUT"
+      - name: Verify the source tag and staged artifacts
+        if: steps.release.outputs.pending == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init source
+          git -C source fetch --depth=1 https://github.com/Fresh-Industries/nima.git refs/tags/v0.1.8
+          test "$(git -C source rev-parse 'FETCH_HEAD^{commit}')" = 8c78c12860c0290422ba56bfdc63d21bbfed5f7b
+          mkdir release
+          cd release
+          base=https://bare-zebra.runlocal.eu/downloads/bara-0.1.8
+          curl -fL --retry 3 --connect-timeout 20 --max-time 60 "$base/SHA256SUMS.txt" -o SHA256SUMS
+          echo '5b1279e0ea9c1d888de3ea5599f3186ab43797aa55f86baf675082466f14ed58  SHA256SUMS' | sha256sum -c -
+          for name in Bara-0.1.8-x64.exe Bara-0.1.8-x64.exe.blockmap latest.yml t3-0.1.8-linux-x64.tar.gz bara-studio-engine-windows-x64.exe bara-studio-engine-linux-x64; do
+            remote="$name"
+            if [[ "$name" == bara-studio-engine-linux-x64 ]]; then remote="$name.bin"; fi
+            curl -fL --retry 3 --connect-timeout 20 --max-time 600 "$base/$remote" -o "$name"
+          done
+          sha256sum -c SHA256SUMS
+      - name: Upload and verify the bootstrap release
+        if: steps.release.outputs.pending == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh release view v0.1.8 --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = true
+          gh release upload v0.1.8 --repo "$GITHUB_REPOSITORY" --clobber release/*
+          gh release download v0.1.8 --repo "$GITHUB_REPOSITORY" --dir verified
+          (cd verified && sha256sum -c SHA256SUMS)
+          cmp release/SHA256SUMS verified/SHA256SUMS
+      - name: Publish the verified bootstrap release
+        if: steps.release.outputs.pending == 'true'
+        shell: bash
+        run: gh release edit v0.1.8 --repo "$GITHUB_REPOSITORY" --draft=false --latest
+
   linux:
-    if: github.repository == 'Fresh-Industries/nima' && github.ref_name != 'v0.1.8'
+    if: github.repository == 'Fresh-Industries/nima' && (github.ref_type == 'tag' || github.event_name == 'workflow_dispatch') && github.ref_name != 'v0.1.8'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     defaults:
@@ -88,7 +138,7 @@ jobs:
 
   windows:
     needs: linux
-    if: github.repository == 'Fresh-Industries/nima' && github.ref_name != 'v0.1.8'
+    if: github.repository == 'Fresh-Industries/nima' && (github.ref_type == 'tag' || github.event_name == 'workflow_dispatch') && github.ref_name != 'v0.1.8'
     runs-on: windows-latest
     timeout-minutes: 60
     defaults:
