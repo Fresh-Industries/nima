@@ -184,6 +184,14 @@ jobs:
       - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
 
+      # Git Bash puts GNU coreutils `link` ahead of MSVC's link.exe, which breaks Rust builds.
+      - name: Pin the MSVC linker for Rust
+        shell: pwsh
+        run: |
+          $linker = Get-Command link.exe -All | Where-Object { $_.Source -like '*\VC\Tools\MSVC\*' } | Select-Object -First 1
+          if (-not $linker) { throw 'MSVC link.exe was not found on PATH.' }
+          "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=$($linker.Source)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
         with:
