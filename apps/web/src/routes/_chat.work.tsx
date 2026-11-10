@@ -4,6 +4,7 @@ import { ConversationList } from "../nima/Workspace";
 export const Route = createFileRoute("/_chat/work")({
   validateSearch: (raw: Record<string, unknown>) => ({
     ...(raw.view === "projects" ? { view: "projects" as const } : {}),
+    ...(raw.new === true || raw.new === "true" ? { new: true as const } : {}),
     ...(typeof raw.projectId === "string" && raw.projectId.trim()
       ? { projectId: ProjectId.make(raw.projectId) }
       : {}),

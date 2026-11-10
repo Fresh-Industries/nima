@@ -37,10 +37,12 @@ import { useImportWorkspaceReview, useWorkspaceReview } from "./useWorkspaceRevi
 import { useWorkspaceThreads, sortByWorkState, WorkTreeRow } from "./Workspace";
 import { threadNeedsYou, threadWorkState, type WorkState } from "./workState";
 import { WorkSurfaceContent } from "./Surfaces";
+import { BaraTopBar } from "./BaraTopBar";
 import styles from "./nima.module.css";
 import { isElectron } from "../env";
 import { isMacPlatform } from "../lib/utils";
 import { observeResize } from "../lib/observeResize";
+import { useVisibleThreadShells } from "../state/entities";
 
 const SIDEBAR_TREE_LIMIT = 6;
 
@@ -363,14 +365,13 @@ export function BaraFrame({ children }: { children: ReactNode }) {
   const width = studioSurface ? studioWidth : utilityWidth;
   const navigate = useNavigate();
   const isAssistant = useIsDailyConversation();
-  const {
-    config: { name },
-  } = usePersonalAssistant();
   const target = useThreadRouteTarget();
   const ref = target?.kind === "server" ? target.threadRef : null;
   const workReview = useWorkspaceReview();
   const workMetadata = ref ? workReview.metadata.get(scopedThreadKey(ref)) : undefined;
   const workSessionConversation = workMetadata?.kind === "focus";
+  const needsYou = useVisibleThreadShells().some(threadNeedsYou);
+  const inboxWaiting = needsYou || workReview.pendingCount > 0;
   const nativeState = useRightPanelStore((state) =>
     ref ? state.byThreadKey[scopedThreadKey(ref)] : undefined,
   );
@@ -465,26 +466,7 @@ export function BaraFrame({ children }: { children: ReactNode }) {
       >
         <div className={styles["nima-center"]}>
           <div className={`${styles["nima-topbar"]} ${isElectron ? "drag-region" : ""}`}>
-            <span className="truncate">
-              {isAssistant
-                ? name
-                : (activeBot?.config.name ??
-                  (workSessionConversation ? workMetadata?.title : null) ??
-                  (pathname.startsWith("/settings")
-                    ? "Settings"
-                    : pathname === "/studio"
-                      ? "Studio"
-                      : pathname === "/spaces"
-                        ? "Library"
-                        : pathname === "/bots"
-                          ? "Bots"
-                          : pathname === "/goals"
-                            ? "Goals"
-                            : pathname === "/inbox"
-                              ? "Inbox"
-                              : "Work"))}
-            </span>
-            <div>
+            <BaraTopBar isAssistant={isAssistant} inboxWaiting={inboxWaiting} needsYou={needsYou}>
               <button
                 ref={toggleRef}
                 aria-label="Toggle contextual panel"
@@ -493,7 +475,7 @@ export function BaraFrame({ children }: { children: ReactNode }) {
               >
                 <PanelRight size={17} />
               </button>
-            </div>
+            </BaraTopBar>
           </div>
           {activeBot && !activeBot.home && ref && (
             <div className="flex items-center gap-5 border-b border-border/50 px-5 py-2 text-xs text-muted-foreground">

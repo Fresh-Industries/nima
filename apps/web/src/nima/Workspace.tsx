@@ -239,11 +239,13 @@ export function ConversationList({
   environmentId,
   projectId,
   view,
+  new: startNew,
 }: {
   botId?: BotId;
   environmentId?: EnvironmentId;
   projectId?: ProjectId;
   view?: "projects";
+  new?: true;
 }) {
   const { active, review } = useWorkspaceThreads();
   const navigate = useNavigate();
@@ -253,7 +255,8 @@ export function ConversationList({
     (entry) => entry.id === projectId && entry.environmentId === environmentId,
   );
   const [query, setQuery] = useState("");
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(Boolean(startNew));
+  const router = useRouter();
   const [managingTeams, setManagingTeams] = useState(false);
   const [error, setError] = useState("");
   const [pending, setPending] = useState<string | null>(null);
@@ -478,7 +481,16 @@ export function ConversationList({
           {...(botId ? { coordinatorBotId: botId } : {})}
           {...(environmentId ? { environmentId } : {})}
           {...(projectId ? { projectId } : {})}
-          onClose={() => setCreating(false)}
+          onClose={() => {
+            setCreating(false);
+            if (startNew && router.state.location.pathname === "/work")
+              void navigate({
+                from: "/work",
+                to: "/work",
+                search: ({ new: _, ...rest }) => rest,
+                replace: true,
+              });
+          }}
         />
       )}
     </main>

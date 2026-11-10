@@ -56,3 +56,44 @@ export function threadWorkState(thread: WorkStateInput, backgroundPending = fals
   if (status === "failed" || status === "cancelled" || status === "interrupted") return "stopped";
   return "ready";
 }
+
+type BotWorkMeta = {
+  readonly coordinatorBotId?: string | null | undefined;
+  readonly title?: string | null | undefined;
+  readonly assistantWorkPending?: boolean | undefined;
+  readonly workPending?: boolean | undefined;
+};
+
+/**
+ * What a Bot is doing, from its own conversation and the Work it coordinates. Null means nothing
+ * reliable is happening, so an idle Bot never shows a status it does not have.
+ */
+export function botActivity<
+  T extends WorkStateInput & {
+    readonly environmentId: string;
+    readonly id: string;
+    readonly title: string;
+  },
+>(input: {
+  bot: { readonly id: string; readonly threadId: string | null };
+  environmentId: string | null;
+  threads: readonly T[];
+  metaFor: (thread: T) => BotWorkMeta | undefined;
+}): { state: "needs-you" | "working" | "queued"; text: string } | null {
+  const own = input.threads.find(
+    (thread) => thread.environmentId === input.environmentId && thread.id === input.bot.threadId,
+  );
+  if (own && threadNeedsYou(own)) return { state: "needs-you", text: needsYouReason(own) };
+  for (const thread of input.threads) {
+    const meta = input.metaFor(thread);
+    if (
+      meta?.coordinatorBotId === input.bot.id &&
+      threadWorkState(thread, Boolean(meta.assistantWorkPending || meta.workPending)) === "working"
+    )
+      return { state: "working", text: `Working on ${meta.title || thread.title}` };
+  }
+  const state = own ? threadWorkState(own) : null;
+  if (state === "working") return { state, text: "Working" };
+  if (state === "queued") return { state, text: "Queued" };
+  return null;
+}

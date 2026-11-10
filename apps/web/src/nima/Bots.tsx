@@ -2,7 +2,7 @@ import { useStableCallback } from "../hooks/useStableCallback";
 import { useEffect } from "react";
 import { randomUUID } from "../lib/utils";
 import { useAtomValue } from "@effect/atom-react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import {
   BotId,
@@ -32,7 +32,7 @@ import formStyles from "./BriefForm.module.css";
 import { Routines } from "./Routines";
 import { BotCapabilitiesSettings } from "./BotCapabilitiesSettings";
 import { PersonalMemorySettings } from "./PersonalMemorySettings";
-import { useBots } from "./useBots";
+import { useBots, useOpenBotConversation } from "./useBots";
 
 const failureMessage = (result: Parameters<typeof squashAtomCommandFailure>[0]) => {
   const error = squashAtomCommandFailure(result);
@@ -54,41 +54,23 @@ export function Bots({
   create?: boolean;
 }) {
   const state = useBots(target);
-  const navigate = useNavigate();
   const create = useAtomCommand(serverEnvironment.createBot, { reportFailure: false });
-  const open = useAtomCommand(serverEnvironment.openBot, { reportFailure: false });
   const canCreate = useAtomValue(serverEnvironment.createBot.permissionAtom(state.environmentId));
-  const canOpen = useAtomValue(serverEnvironment.openBot.permissionAtom(state.environmentId));
   const [creating, setCreating] = useState(initialCreate ?? false);
   const [archived, setArchived] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const loading = state.query.isPending && !state.query.data;
   const selected = state.bots.find((bot) => bot.id === botId);
+  const openBot = useOpenBotConversation(state.environmentId);
+  const canOpen = openBot.canOpen;
   const openConversation = async (bot: BotProfile) => {
-    if (!state.environmentId || busy) return;
-    if (!canOpen) {
-      if (bot.threadId)
-        await navigate({
-          to: "/$environmentId/$threadId",
-          params: { environmentId: state.environmentId, threadId: bot.threadId },
-        });
-      return;
-    }
+    if (busy) return;
     setBusy(true);
     setError("");
-    const environmentId = state.environmentId;
-    const result = await open({ environmentId, input: { id: bot.id } });
+    const failure = await openBot.openConversation(bot);
     setBusy(false);
-    if (result._tag !== "Success") {
-      setError(failureMessage(result));
-      return;
-    }
-    if (result.value.threadId)
-      await navigate({
-        to: "/$environmentId/$threadId",
-        params: { environmentId, threadId: result.value.threadId },
-      });
+    if (failure) setError(failure);
   };
   if (taskId || view === "routines")
     return (
@@ -397,7 +379,8 @@ function BotSettings({
     ? `${draft.modelSelection.instanceId}:${draft.modelSelection.model}`
     : "";
   const disabled = !connected || !canWrite || busy;
-  const save = async (archived = bot.archived) => {
+  const save = async (archive?: boolean) => {
+    const archived = archive ?? bot.archived;
     setBusy(true);
     setStatus("");
     const result = await write({

@@ -5,7 +5,12 @@ import { createPortal } from "react-dom";
 import { useCompanionPanel } from "../nima/CompanionPanel";
 import { usePersonalChat } from "../nima/useDailyConversation";
 import { useAssistantDayWindow } from "../nima/useAssistantDayWindow";
-import { AssistantWelcome, AssistantStartActions } from "../nima/AssistantWelcome";
+import {
+  AssistantFocusEmpty,
+  AssistantStartActions,
+  AssistantWelcome,
+} from "../nima/AssistantWelcome";
+import { assistantFocusHandlers } from "../nima/assistantFocus";
 import { ChildThreadApprovals } from "./chat/ChildThreadApprovals";
 import { workspaceAreaProps } from "../lib/workspaceFocus";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
@@ -3552,6 +3557,9 @@ export default function ChatView(props: ChatViewProps) {
                     ? {}
                     : { historyControls: threadHistoryControls })}
                 />
+                {isPersonalChat && !isDraftHeroState && timelineEmpty && !isWorking && (
+                  <AssistantFocusEmpty />
+                )}
               </WorkspaceMutationIdContext>
 
               {showScrollToBottom && !isThreadFindActive && (
@@ -3617,6 +3625,25 @@ export default function ChatView(props: ChatViewProps) {
                   <div
                     ref={draftHeroComposerAnchorRef}
                     className="relative z-10"
+                    {...assistantFocusHandlers({
+                      enabled: isPersonalChat && activeThreadKey !== null,
+                      home: isDraftHeroState,
+                      canReturnHome:
+                        draftHeroDockRequested &&
+                        timelineEmpty &&
+                        !isWorking &&
+                        !backgroundSubmissionPending,
+                      hasDraft:
+                        composerHasPrompt || composerHasAttachments || composerHasNonPromptContent,
+                      onEnter: () => {
+                        captureDraftHeroComposerRect();
+                        setDockedDraftHeroThreadKey(activeThreadKey);
+                      },
+                      onLeave: () => {
+                        captureDraftHeroComposerRect();
+                        setDockedDraftHeroThreadKey(null);
+                      },
+                    })}
                     style={
                       forceExpandedMobileComposer
                         ? { viewTransitionName: MOBILE_COMPOSER_VIEW_TRANSITION_NAME }
@@ -3929,17 +3956,7 @@ export default function ChatView(props: ChatViewProps) {
                         </div>
                       ) : null}
                     </ComposerSurface.Shell>
-                    {isPersonalChat && isDraftHeroState && (
-                      <AssistantStartActions
-                        hasDraft={composerHasPrompt}
-                        onPrompt={(prompt) => {
-                          useComposerDraftStore
-                            .getState()
-                            .setPrompt(draftId ?? routeThreadRef, prompt);
-                          focusComposerStable();
-                        }}
-                      />
-                    )}
+                    {isPersonalChat && isDraftHeroState && <AssistantStartActions />}
                     <div
                       aria-hidden
                       className="h-[calc(env(safe-area-inset-bottom)+1rem)] sm:h-[calc(env(safe-area-inset-bottom)+1.25rem)]"

@@ -1,5 +1,5 @@
 import { expect, it } from "vite-plus/test";
-import { threadWorkState } from "./workState";
+import { botActivity, threadWorkState } from "./workState";
 
 type Thread = Parameters<typeof threadWorkState>[0];
 
@@ -49,4 +49,43 @@ it.each([
 
 it("treats Bara-tracked background work as working", () => {
   expect(threadWorkState({ ...idle, latestRun: run("completed") }, true)).toBe("working");
+});
+
+it("reports Bot activity only from real runtime state", () => {
+  const thread = (id: string, patch: Partial<Thread> = {}) => ({
+    ...idle,
+    ...patch,
+    environmentId: "local",
+    id,
+    title: id,
+  });
+  const bot = { id: "dev", threadId: "dev-chat" };
+  const activity = (threads: ReturnType<typeof thread>[], coordinated: string[] = []) =>
+    botActivity({
+      bot,
+      environmentId: "local",
+      threads,
+      metaFor: (entry) =>
+        coordinated.includes(entry.id) ? { coordinatorBotId: "dev", title: "Checkout" } : undefined,
+    });
+
+  expect(activity([thread("dev-chat", { latestRun: run("completed") })])).toBeNull();
+  expect(activity([thread("checkout")], ["checkout"])).toBeNull();
+  expect(activity([thread("checkout", { runtime: runtime("running") })], ["checkout"])).toEqual({
+    state: "working",
+    text: "Working on Checkout",
+  });
+  expect(activity([thread("dev-chat", { runtime: runtime("queued") })])).toEqual({
+    state: "queued",
+    text: "Queued",
+  });
+  expect(
+    activity(
+      [
+        thread("dev-chat", { hasPendingApprovals: true }),
+        thread("checkout", { runtime: runtime("running") }),
+      ],
+      ["checkout"],
+    ),
+  ).toEqual({ state: "needs-you", text: "Approval needed" });
 });
