@@ -12,7 +12,7 @@ an ambient `T3CODE_HOME` does not select Bara's desktop storage. Existing T3 pro
 and credentials are not imported automatically.
 
 The beta installer is unsigned. Windows may show an unknown-publisher warning.
-Install Bara 0.1.7 or newer once from the [Bara releases page](https://github.com/Fresh-Industries/nima/releases).
+Install Bara 0.1.8 or newer once from the [Bara releases page](https://github.com/Fresh-Industries/nima/releases).
 Earlier local builds lack a native update feed. After that, Settings → About → **Check for Updates**
 can download and install newer published Bara releases. It checks this fork's GitHub releases,
 independently of T3's releases. Downloads and installation remain explicit actions.
@@ -23,6 +23,12 @@ to access its existing conversations; this does not copy them to the local serve
 The installer uses native Windows providers and does not bundle a WSL runtime.
 Studio's Rust command-line engine is bundled and connected automatically. Video
 exports still require FFmpeg on your PATH.
+
+SSH setup uses the matching Bara backend from the same release. Linux x64 hosts
+receive Inbox, Bots and Studio, including its native engine. Reconnect an existing
+SSH environment after updating the desktop app to replace the backend Bara manages.
+An independently running server is left running; update that server separately.
+Other remote platforms need a compatible Bara server until their archives ship.
 
 ## Building
 

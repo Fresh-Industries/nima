@@ -175,6 +175,9 @@ const make = Effect.gen(function* () {
       JOIN orchestration_v2_projection_messages AS message ON message.message_id = json_extract(run.payload_json, '$.userMessageId')
       WHERE run.thread_id = ${threadId} AND json_extract(message.payload_json, '$.scheduledTaskId') IS NULL ORDER BY run.ordinal DESC LIMIT 1`;
     yield* mark(`focus:${threadId}`, threadId, run?.run_id ?? "manual", "review");
+    const [item] =
+      yield* sql`SELECT key FROM workspace_review_items WHERE key=${`focus:${threadId}`} AND state='review'`;
+    if (!item) return yield* new WorkspaceReviewError({ reason: "unavailable" });
   });
   const write = Effect.fn("WorkspaceReview.write")(
     function* (raw: WorkspaceReviewWriteInput) {

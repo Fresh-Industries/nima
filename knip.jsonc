@@ -43,6 +43,14 @@
       // knip run beside it in check:changed must not report.
       "ignore": ["npm-launcher/**", ".knip-test-*/**"],
     },
+    "evals": {
+      "entry": [
+        "mcp-tool-use/run.ts",
+        "mcp-tool-use/trim-capture.ts",
+        "thread-titles/run.ts",
+        "test-signal/run.ts",
+      ],
+    },
     "apps/server": {
       // Vite+ pack entries and the launcher used by installed background services.
       "entry": [

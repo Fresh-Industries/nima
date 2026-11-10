@@ -185,4 +185,17 @@ it("creates personal Work with an existing Bot, keeps the objective in its own c
   await page.getByText("Close", { exact: true }).click();
   await page.screenshot({ path: "/workspace/nima/.t3/work-project-session-dark.png" });
   setAppearanceMode("light");
+  await router.navigate({
+    to: "/work",
+    search: { environmentId: ENVIRONMENT_ID, projectId: PROJECT_ID },
+  });
+  await page
+    .getByRole("article")
+    .filter({ hasText: "Checkout fix" })
+    .getByRole("button", { name: "Send to Inbox", exact: true })
+    .click();
+  await expect.poll(() => router.state.location.pathname).toBe("/inbox");
+  await expect.element(page.getByRole("heading", { name: "Inbox", exact: true })).toBeVisible();
+  await expect.element(page.getByText("Checkout fix", { exact: true })).toBeVisible();
+  await page.screenshot({ path: "/workspace/nima/.t3/work-inbox-handoff.png" });
 });

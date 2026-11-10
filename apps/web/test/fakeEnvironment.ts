@@ -557,6 +557,36 @@ const handlers: Record<string, (input: never) => unknown> = {
     }),
   [WS_METHODS.workspaceReviewWrite]: (input: WorkspaceReviewWriteInput) =>
     Effect.gen(function* () {
+      if (input.action === "request" && inboxFixture) {
+        const meta = inboxFixture.metadata.find((entry) => entry.threadId === input.threadId);
+        if (!meta) throw new Error("Missing Work fixture");
+        const key = `focus:${input.threadId}`;
+        const item = {
+          key,
+          version: "manual",
+          kind: "focus" as const,
+          threadId: input.threadId,
+          runId: null,
+          botId: null,
+          title: meta.title ?? "Work",
+          summary: meta.objective ?? "",
+          completedAt: "2026-03-17T19:12:28.000Z",
+          status: null,
+          state: "review" as const,
+        };
+        const items = [...inboxFixture.items.filter((entry) => entry.key !== key), item];
+        inboxFixture = {
+          ...inboxFixture,
+          items,
+          pendingCount: items.length,
+          metadata: inboxFixture.metadata.map((entry) =>
+            entry.threadId === input.threadId
+              ? { ...entry, state: "review" as const, version: "manual" }
+              : entry,
+          ),
+        };
+        for (const queue of reviewSubscribers) yield* Queue.offer(queue, inboxFixture);
+      }
       if (input.action === "coordinate" && inboxFixture) {
         inboxFixture = {
           ...inboxFixture,

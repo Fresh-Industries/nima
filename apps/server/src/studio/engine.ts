@@ -26,7 +26,12 @@ const resolveStudioBinary = Effect.fn("Studio.resolveBinary")(function* () {
   if (environment.BARA_STUDIO_CLI?.trim()) return environment.BARA_STUDIO_CLI.trim();
   const name = platform === "win32" ? "bara-cli.exe" : "bara-cli",
     installed = path.join(config.baseDir, "bin", name);
-  return (yield* fs.exists(installed)) ? installed : name;
+  if (yield* fs.exists(installed)) return installed;
+  if (yield* HostProcess.IsExecutable) {
+    const bundled = path.join(path.dirname(yield* HostProcess.ExecutablePath), "studio", name);
+    if (yield* fs.exists(bundled)) return bundled;
+  }
+  return name;
 });
 const resolveStudioEncoder = Effect.fn("Studio.resolveEncoder")(function* () {
   const environment = yield* HostProcess.Environment,

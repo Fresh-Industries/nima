@@ -212,6 +212,40 @@ it.effect("paginates tied completion timestamps without losing bot runs", () =>
 );
 
 it.effect(
+  "sends a resumed result back to Inbox and rejects handoffs that cannot produce an item",
+  () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse(at) + 1000);
+      const review = yield* Review.WorkspaceReview;
+      const sql = yield* SqlClient.SqlClient;
+      yield* seedThread("focus", { settledOverride: "active", unsettledAt: at });
+      yield* seedRun("focus", "finished", 1);
+      assert.equal((yield* review.read(input)).pendingCount, 0);
+      yield* review.write({ action: "request", threadId: ThreadId.make("focus") });
+      let snapshot = yield* review.read(input);
+      assert.equal(snapshot.pendingCount, 1);
+      assert.equal(snapshot.items[0]?.runId, "finished");
+      assert.include(snapshot.items[0]?.summary ?? "", "Saved output");
+      yield* review.write({ action: "request", threadId: ThreadId.make("focus") });
+      assert.equal((yield* review.read(input)).pendingCount, 1);
+      yield* seedThread("child", { lineage: { relationshipToParent: "subagent" } });
+      yield* seedRun("child", "child-result", 1);
+      assert.equal(
+        (yield* review
+          .write({ action: "request", threadId: ThreadId.make("child") })
+          .pipe(Effect.flip)).reason,
+        "unavailable",
+      );
+      assert.equal(
+        (yield* sql`SELECT * FROM workspace_review_marks WHERE thread_id='child'`).length,
+        0,
+      );
+      snapshot = yield* review.read(input);
+      assert.equal(snapshot.pendingCount, 1);
+    }).pipe(Effect.provide(memory)),
+);
+
+it.effect(
   "reviews direct assistant delegations, keeps nested work inside the session, and waits for pending child delivery",
   () =>
     Effect.gen(function* () {

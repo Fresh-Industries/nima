@@ -22,7 +22,7 @@ export const StudioToolkit = Toolkit.make(
   Tool.make("t3_studio_inspect", {
     ...shared,
     description:
-      "Inspect Bara creative Studio on the selected environment. scope=studio lists saved projects, workspaces, originals and revision; scope=artwork requires an artwork asset id and returns editable nodes/revision; scope=live reads the saved scene collection; scope=capabilities lists supported native operations and limits. Read before editing. Image bytes and generated SVG are omitted from agent responses. The native Rust engine remains authoritative.",
+      "Inspect Bara's built-in creative Studio on the selected environment, the default destination for editable canvases, mockups, photo edits and storyboards unless the user requests another service. Read before editing with t3_studio_edit. If available=false, report the limitation; do not silently substitute Figma or claim an external result is in Bara. scope=studio lists saved projects, workspaces, originals and revision; scope=artwork requires an artwork asset id and returns editable nodes/revision; scope=live reads the saved scene collection; scope=capabilities lists supported native operations and limits. Image bytes and generated SVG are omitted from agent responses. The native Rust engine remains authoritative.",
     parameters: Schema.Struct({
       environmentId: OrchestratorMcpEnvironmentTarget,
       ...StudioReadInput.fields,

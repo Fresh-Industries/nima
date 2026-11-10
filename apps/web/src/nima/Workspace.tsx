@@ -28,6 +28,7 @@ import { useScratchProject } from "../hooks/useScratchProject";
 import { useWorkspaceReview } from "./useWorkspaceReview";
 import { useAtomCommand } from "../state/use-atom-command";
 import { serverEnvironment } from "../state/server";
+import { formatEnvironmentQueryError } from "../state/query";
 
 function refFor(thread: EnvironmentThreadShell) {
   return scopeThreadRef(thread.environmentId, thread.id);
@@ -214,6 +215,8 @@ export function ConversationList({
   view?: "projects";
 }) {
   const { active, review } = useWorkspaceThreads();
+  const navigate = useNavigate();
+  const { environments } = useEnvironments();
   const projects = useProjects();
   const project = projects.find(
     (entry) => entry.id === projectId && entry.environmentId === environmentId,
@@ -245,8 +248,8 @@ export function ConversationList({
           environmentId: thread.environmentId,
           input: { action: "request", threadId: thread.id },
         });
-    if (result._tag !== "Success")
-      setError("Could not update this session. Check the connection and permissions.");
+    if (result._tag !== "Success") setError(formatEnvironmentQueryError(result.cause));
+    else if (!retire) await navigate({ to: "/inbox" });
     setPending(null);
   };
   return (
@@ -315,6 +318,19 @@ export function ConversationList({
               {message}
             </p>
           ))}
+          {environments
+            .filter(
+              (host) =>
+                host.connection.phase === "connected" &&
+                !review.hosts.some((entry) => entry.environmentId === host.environmentId) &&
+                items.some((thread) => thread.environmentId === host.environmentId),
+            )
+            .map((host) => (
+              <p key={host.environmentId} className="text-sm text-muted-foreground">
+                {host.label} needs a Bara backend for Inbox and Studio. Its conversations are still
+                available.
+              </p>
+            ))}
           <div className={styles["nima-conversation-list"]}>
             {items.map((thread) => {
               const key = keyFor(thread);

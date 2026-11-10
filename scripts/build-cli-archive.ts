@@ -520,8 +520,26 @@ const buildCliArchive = Effect.fn("buildCliArchive")(function* (input: {
 
   yield* Effect.log(`[cli-archive] Staging ${stem}...`);
   yield* fs.copyFile(builtExecutable, path.join(contentDir, executableName));
+  yield* fs.copyFile(path.join(repoRoot, "LICENSE"), path.join(contentDir, "T3-Code-MIT.txt"));
   yield* stageWebClient(webClient, path.join(contentDir, "client"));
   yield* fs.copy(resourceMonitorDir, path.join(contentDir, "resource-monitor"));
+  const studioBinary = Option.getOrUndefined(
+    yield* Config.String("BARA_STUDIO_ENGINE_BINARY").pipe(Config.option),
+  );
+  if (studioBinary) {
+    yield* requireInput(
+      studioBinary,
+      "Set BARA_STUDIO_ENGINE_BINARY to the target platform's Studio CLI.",
+    );
+    const studioDir = path.join(contentDir, "studio");
+    yield* fs.makeDirectory(studioDir);
+    const studioTarget = path.join(
+      studioDir,
+      input.platform === "win" ? "bara-cli.exe" : "bara-cli",
+    );
+    yield* fs.copyFile(studioBinary, studioTarget);
+    if (input.platform !== "win") yield* fs.chmod(studioTarget, 0o755);
+  }
   yield* stageRuntimeExternals({
     repoRoot,
     stageDir: contentDir,

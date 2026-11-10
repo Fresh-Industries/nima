@@ -1,35 +1,101 @@
-name: Bara Windows release
+name: Bara desktop and Linux backend release
 
 on:
   push:
     tags: ["v*.*.*"]
-    branches: ["feature/bara-ux-transformation"]
-    paths: [".github/workflows/release-bara-windows.yml"]
   workflow_dispatch:
     inputs:
       tag:
         description: Existing version tag to release
         required: true
-        default: v0.1.7
+        default: v0.1.8
         type: string
 
 permissions:
   contents: write
 
 concurrency:
-  group: bara-windows-${{ github.ref_type == 'tag' && github.ref_name || inputs.tag || 'v0.1.7' }}
+  group: bara-windows-${{ github.ref_type == 'tag' && github.ref_name || inputs.tag || 'v0.1.8' }}
   cancel-in-progress: false
 
 jobs:
+  linux:
+    if: github.repository == 'Fresh-Industries/nima' && github.ref_name != 'v0.1.8'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag || 'v0.1.8' }}
+      T3CODE_TELEMETRY_CHANNEL: dev
+      T3CODE_WEB_SOURCEMAP: "0"
+    steps:
+      - name: Check out tagged Bara source
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          git init .
+          git remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
+          git fetch --no-tags --depth=1 origin "refs/tags/$RELEASE_TAG"
+          git sparse-checkout set --no-cone '/*' '!/.repos/'
+          git checkout --detach FETCH_HEAD
+      - name: Set up workspace dependencies
+        uses: ./.github/actions/setup-ci-deps
+        with:
+          install-args: --filter=t3... --filter=@t3tools/scripts...
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: stable
+      - name: Prepare Linux archive tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libatomic1 patchelf
+      - name: Acquire the verified Linux Studio CLI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p .generated/studio-engine release
+          gh release download v0.1.8 --repo "$GITHUB_REPOSITORY" --dir .generated/studio-engine \
+            --pattern bara-studio-engine-linux-x64 --pattern SHA256SUMS
+          (cd .generated/studio-engine && grep '  bara-studio-engine-linux-x64$' SHA256SUMS | sha256sum -c -)
+          chmod +x .generated/studio-engine/bara-studio-engine-linux-x64
+          echo "BARA_STUDIO_ENGINE_BINARY=$(pwd)/.generated/studio-engine/bara-studio-engine-linux-x64" >> "$GITHUB_ENV"
+      - name: Build Linux backend with Studio
+        run: |
+          set -euo pipefail
+          cargo build --locked --release --manifest-path native/resource-monitor/Cargo.toml
+          mkdir -p .generated/resource-monitor
+          cp native/resource-monitor/target/release/t3-resource-monitor .generated/resource-monitor/
+          vp run --filter @t3tools/web build
+          node apps/server/scripts/cli.ts build
+          node apps/server/scripts/cli.ts build-exe --target linux-x64
+          node scripts/build-cli-archive.ts --platform linux --arch x64 --version "${RELEASE_TAG#v}" \
+            --output-dir release --resource-monitor-dir .generated/resource-monitor
+          cp "$BARA_STUDIO_ENGINE_BINARY" release/bara-studio-engine-linux-x64
+          tar -xzf "release/t3-${RELEASE_TAG#v}-linux-x64.tar.gz" -C .generated
+          test "$(.generated/t3-${RELEASE_TAG#v}-linux-x64/t3 --version)" = "t3 v${RELEASE_TAG#v}"
+          .generated/t3-${RELEASE_TAG#v}-linux-x64/studio/bara-cli capabilities >/dev/null
+      - name: Retain Linux backend for publication
+        uses: actions/upload-artifact@v7
+        with:
+          name: bara-linux-backend
+          path: release/*
+          if-no-files-found: error
+
   windows:
-    if: github.repository == 'Fresh-Industries/nima'
+    needs: linux
+    if: github.repository == 'Fresh-Industries/nima' && github.ref_name != 'v0.1.8'
     runs-on: windows-latest
     timeout-minutes: 60
     defaults:
       run:
         shell: bash
     env:
-      RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag || 'v0.1.7' }}
+      RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag || 'v0.1.8' }}
       BARA_DESKTOP_UPDATE_REPOSITORY: Fresh-Industries/nima
       T3CODE_TELEMETRY_CHANNEL: dev
 
@@ -59,9 +125,6 @@ jobs:
           for(const file of ['apps/desktop/package.json','apps/server/package.json','apps/web/package.json','packages/contracts/package.json'])
             assert.equal(JSON.parse(fs.readFileSync(file,'utf8')).version,version,file);
           JS
-          if [[ "$RELEASE_TAG" == v0.1.7 ]]; then
-            [[ "$(git rev-parse HEAD)" == fb6d5fa097a83667effd9bb8dff4a1c99c4070f8 ]]
-          fi
 
       - name: Set up workspace dependencies
         uses: ./.github/actions/setup-ci-deps
@@ -83,21 +146,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .generated/studio-engine
-          if [[ "$RELEASE_TAG" == v0.1.7 ]]; then
-            installer=.generated/studio-engine/bootstrap.exe
-            curl -fL --retry 3 --connect-timeout 20 --max-time 240 \
-              https://less-tarsier.runlocal.eu/downloads/Bara-0.1.6-20261109-chat-fixes-x64.exe \
-              -o "$installer"
-            echo "d0c5d027a6165dedcc2f99a520c1ca02abb0eda245a1b7bf374f519a0918efa6  $installer" | sha256sum -c -
-            7z x -y -o.generated/studio-engine/installer "$installer" '$PLUGINSDIR/app-64.7z'
-            7z x -y -o.generated/studio-engine/app '.generated/studio-engine/installer/$PLUGINSDIR/app-64.7z' resources/studio/bara-cli.exe
-            engine="$(pwd)/.generated/studio-engine/app/resources/studio/bara-cli.exe"
-          else
-            gh release download v0.1.7 --repo "$GITHUB_REPOSITORY" --dir .generated/studio-engine \
-              --pattern bara-studio-engine-windows-x64.exe --pattern SHA256SUMS
-            (cd .generated/studio-engine && grep '  bara-studio-engine-windows-x64.exe$' SHA256SUMS | sha256sum -c -)
-            engine="$(pwd)/.generated/studio-engine/bara-studio-engine-windows-x64.exe"
-          fi
+          gh release download v0.1.8 --repo "$GITHUB_REPOSITORY" --dir .generated/studio-engine \
+            --pattern bara-studio-engine-windows-x64.exe --pattern SHA256SUMS
+          (cd .generated/studio-engine && grep '  bara-studio-engine-windows-x64.exe$' SHA256SUMS | sha256sum -c -)
+          engine="$(pwd)/.generated/studio-engine/bara-studio-engine-windows-x64.exe"
           [[ -f "$engine" ]]
           echo "BARA_STUDIO_ENGINE_BINARY=$(cygpath -w "$engine")" >> "$GITHUB_ENV"
 
@@ -105,6 +157,12 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/build-desktop-artifact.ts --platform win --target nsis --arch x64 --output-dir release
+
+      - name: Collect Linux backend
+        uses: actions/download-artifact@v8
+        with:
+          name: bara-linux-backend
+          path: release
 
       - name: Validate update metadata and prepare checksums
         working-directory: scripts
@@ -133,7 +191,7 @@ jobs:
           assert.ok(entry);assert.equal(entry.sha512,digest);assert.equal(entry.size,bytes.length);
           const engineName='bara-studio-engine-windows-x64.exe';
           fs.copyFileSync(process.env.BARA_STUDIO_ENGINE_BINARY,path.join(folder,engineName));
-          const files=[name,name+'.blockmap','latest.yml',engineName];
+          const files=[name,name+'.blockmap','latest.yml',engineName,'t3-'+version+'-linux-x64.tar.gz','bara-studio-engine-linux-x64'];
           const sums=files.map(file=>crypto.createHash('sha256').update(fs.readFileSync(path.join(folder,file))).digest('hex')+'  '+file);
           fs.writeFileSync(path.join(folder,'SHA256SUMS'),sums.join('\n')+'\n');
           fs.mkdirSync('../.generated',{recursive:true});
@@ -146,11 +204,11 @@ jobs:
             '',
             'Includes the personal assistant and scoped memory, Bots and routines, Work and Inbox, Goals, Library, Studio, project Work navigation, and continuous previous-day chat history.',
             '',
-            'The Windows beta is unsigned. A supported provider must be configured to execute agent turns. Studio video exports require FFmpeg. Plain T3 SSH servers retain their compatible runtime; Bara-specific coordinators and Inbox require a Bara server.',
+            'The Windows beta is unsigned. A supported provider must be configured to execute agent turns. Studio video exports require FFmpeg. SSH setup downloads the matching Bara Linux x64 backend, including Inbox and Studio. Other remote platforms require a compatible Bara server.',
             '',
-            'T3 Code’s MIT license and attribution remain intact. The separate Studio CLI is reused from the verified Bara bootstrap installer, with its digest in SHA256SUMS. Its extra asset is for packaging; normal use needs only the installer.',
+            'T3 Code’s MIT license and attribution remain intact. The separate Studio CLI is reused from the verified v0.1.8 Bara engine assets, with its digest in SHA256SUMS. Its extra asset is for packaging; normal use needs only the installer.',
             '',
-            'SHA256SUMS covers the installer, blockmap, update metadata, and Studio engine.'
+            'SHA256SUMS covers the installer, blockmap, update metadata, Linux backend and Studio engines.'
           ].join('\n'));
           console.log('Validated installer version, byte count and SHA-512 against latest.yml.');
           JS
@@ -169,7 +227,8 @@ jobs:
           gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --clobber \
             "release/Bara-$version-x64.exe" \
             "release/Bara-$version-x64.exe.blockmap" \
-            release/latest.yml release/SHA256SUMS release/bara-studio-engine-windows-x64.exe
+            release/latest.yml release/SHA256SUMS release/bara-studio-engine-windows-x64.exe \
+            "release/t3-$version-linux-x64.tar.gz" release/bara-studio-engine-linux-x64
 
       - name: Verify uploaded assets
         env:

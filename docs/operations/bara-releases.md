@@ -9,8 +9,8 @@ On a Windows build machine, update the four release package versions with
 and commit the source. Build with the existing desktop packaging command in
 [the desktop guide](../bara/desktop.md), setting `BARA_STUDIO_ENGINE_BINARY` to the
 separately built Windows Studio CLI. Keep that Rust source in its own repository.
-The initial release also provides `bara-studio-engine-windows-x64.exe`; verify it
-against the release's `SHA256SUMS` before reusing it for packaging.
+The initial 0.1.8 release also provides Windows and Linux x64 Studio engine assets;
+verify them against its `SHA256SUMS` before reusing them for packaging.
 
 Create and push a `v<version>` tag on the exact source commit. Create a draft
 GitHub release for that tag and upload the generated `Bara-<version>-x64.exe`,
@@ -26,11 +26,20 @@ upstream release workflow is restricted to T3's repository and does not publish
 Bara. Packaging defaults to Bara's feed; `BARA_DESKTOP_UPDATE_REPOSITORY` can
 explicitly select another fork, and an empty value disables feed generation.
 
-Bara versions are independent of the upstream SSH archive version. The desktop
-currently pins the compatible T3 SSH runtime in
-[DesktopSshCliRunner.ts](../../apps/desktop/src/ssh/DesktopSshCliRunner.ts), so a
-Bara version bump cannot request a nonexistent upstream archive. This does not
-upgrade a plain T3 remote into a Bara server.
+Each release must also include `t3-<version>-linux-x64.tar.gz` for SSH setup.
+Build it with the existing CLI executable and archive scripts. Set
+`BARA_STUDIO_ENGINE_BINARY` to the Linux x64 Studio CLI when assembling that archive.
+The server discovers its engine beside the packaged executable; it does not depend
+on a remote shell's environment variables. Include the archive and both reusable
+engine assets in `SHA256SUMS`. Bara's CLI update feed also points to this fork.
+
+The first 0.1.8 release bootstraps those verified engine assets through a local build.
+Subsequent version tags run
+[the Bara release workflow](../../.github/workflows/release-bara-windows.yml), which
+builds Windows and Linux, verifies uploaded checksums, then publishes. It reuses the
+separately owned engines from 0.1.8 without checking private Rust source into this
+repository. Publish both platforms together: a desktop version must never request
+an SSH archive absent from its release.
 
 Windows release builds are currently unsigned. Do not disable updater checks or
 change the app ID or data paths to work around installation problems. A future

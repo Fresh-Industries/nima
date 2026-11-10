@@ -16,6 +16,7 @@ import { serverEnvironment } from "../state/server";
 import { useAtomCommand } from "../state/use-atom-command";
 import type { WorkspaceReviewCursor } from "@t3tools/contracts";
 import { useWorkspaceReview } from "./useWorkspaceReview";
+import { formatEnvironmentQueryError } from "../state/query";
 import styles from "./nima.module.css";
 
 type ReviewItem = ReturnType<typeof useWorkspaceReview>["items"][number];
@@ -39,10 +40,7 @@ export function WorkspaceInbox() {
       environmentId: item.environmentId,
       input: { action: reopen ? "reopen" : "settle", key: item.key, version: item.version },
     });
-    if (result._tag !== "Success")
-      setError(
-        "Could not update this result. New work may have arrived; check the latest result and try again.",
-      );
+    if (result._tag !== "Success") setError(formatEnvironmentQueryError(result.cause));
     else if (reopen) {
       if (item.kind === "focus") {
         const resumed = await unsettleThread(scopeThreadRef(item.environmentId, item.threadId));
