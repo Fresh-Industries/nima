@@ -48,7 +48,7 @@ import { useEnvironmentQuery } from "../state/query";
 import { scheduledTaskCreatePermissionsAtom, useScheduledBots } from "../state/scheduledTasks";
 import { serverEnvironment } from "../state/server";
 import { useAtomCommand } from "../state/use-atom-command";
-import { useConversationHandoffStore } from "./conversationHandoff";
+import { useConversationHandoffStore } from "./conversationHandoffStore";
 import { useBots } from "./useBots";
 import styles from "./nima.module.css";
 import { BOT_CREATION_PROMPT } from "./botConversation";

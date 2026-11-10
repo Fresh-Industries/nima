@@ -1,5 +1,5 @@
 import { pageRecoveryWorkspaces, type PageWorkspace } from "./pages";
-import type { GoalWorkspace } from "./goals";
+import type { GoalWorkspace } from "./goalWorkspace";
 import type { NoteDraft } from "./notes";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";

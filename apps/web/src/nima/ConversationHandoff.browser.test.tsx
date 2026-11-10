@@ -7,7 +7,7 @@ import { useComposerDraftStore } from "../composerDraftStore";
 import { randomUUID } from "../lib/utils";
 import { ConversationHandoff } from "./ConversationHandoff";
 import { goalConversationPrompt } from "./goalConversation";
-import { useConversationHandoffStore } from "./conversationHandoff";
+import { useConversationHandoffStore } from "./conversationHandoffStore";
 import { BOT_CREATION_PROMPT } from "./botConversation";
 
 function setup() {

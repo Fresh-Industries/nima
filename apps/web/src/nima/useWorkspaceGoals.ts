@@ -17,7 +17,7 @@ import {
   validGoalContent,
   type GoalDraft,
   type GoalWorkspace,
-} from "./goals";
+} from "./goalWorkspace";
 import { useNimaStore } from "./store";
 
 const EMPTY_DRAFTS: Record<string, GoalDraft> = {};

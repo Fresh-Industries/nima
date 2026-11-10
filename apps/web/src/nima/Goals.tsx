@@ -31,9 +31,9 @@ import {
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../components/ui/menu";
 import { useEnvironmentQuery } from "../state/query";
 import { serverEnvironment } from "../state/server";
-import { goalHasConflict, goalIsDirty, goalSummary, type GoalDraft } from "./goals";
+import { goalHasConflict, goalIsDirty, goalSummary, type GoalDraft } from "./goalWorkspace";
 import { goalConversationPrompt } from "./goalConversation";
-import { useConversationHandoffStore } from "./conversationHandoff";
+import { useConversationHandoffStore } from "./conversationHandoffStore";
 import { useWorkspaceGoals } from "./useWorkspaceGoals";
 import styles from "./nima.module.css";
 import formStyles from "./BriefForm.module.css";

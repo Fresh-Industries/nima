@@ -7,7 +7,7 @@ import {
 import { useStableCallback } from "../hooks/useStableCallback";
 import { ComposerBanner } from "../components/chat/ComposerBanner";
 import { Button } from "../components/ui/button";
-import { useConversationHandoffStore } from "./conversationHandoff";
+import { useConversationHandoffStore } from "./conversationHandoffStore";
 
 export function ConversationHandoff({
   active,

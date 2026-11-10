@@ -7,7 +7,7 @@ import {
   newGoalContent,
   receiveGoal,
   receiveGoals,
-} from "./goals";
+} from "./goalWorkspace";
 
 const base: WorkspaceGoal = {
   id: "guide",
