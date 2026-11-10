@@ -296,7 +296,8 @@ jobs:
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir .generated/upload-check \
             --pattern "Bara-${RELEASE_TAG#v}-x64.exe" \
             --pattern "Bara-${RELEASE_TAG#v}-x64.exe.blockmap" \
-            --pattern latest.yml --pattern SHA256SUMS --pattern bara-studio-engine-windows-x64.exe
+            --pattern latest.yml --pattern SHA256SUMS --pattern bara-studio-engine-windows-x64.exe \
+            --pattern "t3-${RELEASE_TAG#v}-linux-x64.tar.gz" --pattern bara-studio-engine-linux-x64
           cd .generated/upload-check
           sha256sum -c SHA256SUMS
 
