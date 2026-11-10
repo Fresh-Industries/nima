@@ -34,12 +34,56 @@ import { BotConversationContext, useBots } from "./useBots";
 import { useNimaStore } from "./store";
 import { PersonalChatContext, useIsDailyConversation } from "./useDailyConversation";
 import { useImportWorkspaceReview, useWorkspaceReview } from "./useWorkspaceReview";
-import { useWorkspaceThreads, ThreadPreview } from "./Workspace";
+import { useWorkspaceThreads, sortByWorkState, WorkTreeRow } from "./Workspace";
+import { threadNeedsYou, threadWorkState, type WorkState } from "./workState";
 import { WorkSurfaceContent } from "./Surfaces";
 import styles from "./nima.module.css";
 import { isElectron } from "../env";
 import { isMacPlatform } from "../lib/utils";
 import { observeResize } from "../lib/observeResize";
+
+const SIDEBAR_TREE_LIMIT = 6;
+
+function SidebarTree({
+  label,
+  rows,
+  empty,
+  more,
+  onOpen,
+}: {
+  label: string;
+  rows: {
+    key: string;
+    environmentId: EnvironmentId;
+    threadId: Parameters<typeof WorkTreeRow>[0]["threadId"];
+    title: string;
+    state: WorkState;
+  }[];
+  empty: string;
+  more: { to: "/work" | "/inbox"; label: string };
+  onOpen: () => void;
+}) {
+  return (
+    <div className={styles["bara-subnav"]} role="group" aria-label={label}>
+      {rows.slice(0, SIDEBAR_TREE_LIMIT).map((row) => (
+        <WorkTreeRow
+          key={row.key}
+          environmentId={row.environmentId}
+          threadId={row.threadId}
+          title={row.title}
+          state={row.state}
+          onOpen={onOpen}
+        />
+      ))}
+      {rows.length === 0 && <p className={styles["bara-tree-empty"]}>{empty}</p>}
+      {rows.length > SIDEBAR_TREE_LIMIT && (
+        <Link to={more.to} onClick={onOpen} className={styles["bara-tree-more"]}>
+          {more.label} · {rows.length}
+        </Link>
+      )}
+    </div>
+  );
+}
 
 export function BaraSidebar() {
   const liveActivityHosts = useLiveActivity((state) => state.hosts);
@@ -53,14 +97,56 @@ export function BaraSidebar() {
   const { active, review, threads } = useWorkspaceThreads();
   const { bots, environmentId: botsEnvironment } = useBots();
   useImportWorkspaceReview(review);
-  const unreviewed =
-    review.pendingCount +
-    threads.filter(
-      (thread) =>
-        thread.hasPendingApprovals ||
-        thread.hasPendingUserInput ||
-        thread.hasActionableProposedPlan,
-    ).length;
+  const inboxOpen = useNimaStore((state) => state.inboxExpanded);
+  const focusTitles = useNimaStore((state) => state.focus);
+  const metaFor = (thread: (typeof threads)[number]) =>
+    review.metadata.get(
+      scopedThreadKey({ environmentId: thread.environmentId, threadId: thread.id }),
+    );
+  const titleFor = (thread: (typeof threads)[number]) =>
+    metaFor(thread)?.title ||
+    focusTitles[scopedThreadKey({ environmentId: thread.environmentId, threadId: thread.id })]
+      ?.title ||
+    thread.title;
+  const workRows = sortByWorkState(
+    active.map((thread) => {
+      const meta = metaFor(thread);
+      return {
+        key: `${thread.environmentId}:${thread.id}`,
+        environmentId: thread.environmentId,
+        threadId: thread.id,
+        title: titleFor(thread),
+        state: threadWorkState(thread, Boolean(meta?.assistantWorkPending || meta?.workPending)),
+      };
+    }),
+    (row) => row.state,
+  );
+  const needsYou = threads.filter(threadNeedsYou);
+  const inboxRows = [
+    ...needsYou.map((thread) => ({
+      key: `${thread.environmentId}:${thread.id}`,
+      environmentId: thread.environmentId,
+      threadId: thread.id,
+      title: titleFor(thread),
+      state: "needs-you" as const,
+    })),
+    ...review.items
+      .filter(
+        (item) =>
+          item.state !== "settled" &&
+          !needsYou.some(
+            (thread) => thread.environmentId === item.environmentId && thread.id === item.threadId,
+          ),
+      )
+      .map((item) => ({
+        key: `${item.environmentId}:${item.key}`,
+        environmentId: item.environmentId,
+        threadId: item.threadId,
+        title: item.title,
+        state: "ready" as const,
+      })),
+  ];
+  const unreviewed = review.pendingCount + needsYou.length;
   const activeBots = bots.filter((bot) => !bot.home && !bot.archived);
   const { isMobile, setOpenMobile, toggleSidebar } = useSidebar();
   const closeMobile = () => {
@@ -97,7 +183,13 @@ export function BaraSidebar() {
           {name}
         </Link>
         <div className={styles["bara-nav-group"]}>
-          <Link to="/work" onClick={closeMobile}>
+          <Link
+            to="/work"
+            onClick={() => {
+              closeMobile();
+              useNimaStore.getState().expandNav("work");
+            }}
+          >
             <Layers size={17} />
             Work
           </Link>
@@ -110,34 +202,50 @@ export function BaraSidebar() {
           </button>
         </div>
         {workOpen && (
-          <div className={styles["bara-subnav"]}>
-            {active.slice(0, 4).map((thread) => (
-              <ThreadPreview
-                key={`${thread.environmentId}:${thread.id}`}
-                thread={thread}
-                onOpen={closeMobile}
-                title={
-                  review.metadata.get(
-                    scopedThreadKey({ environmentId: thread.environmentId, threadId: thread.id }),
-                  )?.title ?? undefined
-                }
-                showWorking
-                backgroundWorking={
-                  review.metadata.get(
-                    scopedThreadKey({ environmentId: thread.environmentId, threadId: thread.id }),
-                  )?.assistantWorkPending ||
-                  review.metadata.get(
-                    scopedThreadKey({ environmentId: thread.environmentId, threadId: thread.id }),
-                  )?.workPending
-                }
-              />
-            ))}
-          </div>
+          <SidebarTree
+            label="Active work sessions"
+            rows={workRows}
+            empty="Nothing running"
+            more={{ to: "/work", label: "All work" }}
+            onOpen={closeMobile}
+          />
         )}
-        <Link to="/inbox" onClick={closeMobile}>
-          <Inbox size={17} />
-          Inbox{unreviewed > 0 && <span className={styles["bara-count"]}>{unreviewed}</span>}
-        </Link>
+        <div className={styles["bara-nav-group"]}>
+          <Link
+            to="/inbox"
+            onClick={() => {
+              closeMobile();
+              useNimaStore.getState().expandNav("inbox");
+            }}
+          >
+            <Inbox size={17} />
+            Inbox
+            {unreviewed > 0 && (
+              <span
+                className={styles["bara-count"]}
+                data-attention={needsYou.length > 0 || undefined}
+              >
+                {unreviewed}
+              </span>
+            )}
+          </Link>
+          <button
+            aria-label={`${inboxOpen ? "Collapse" : "Expand"} inbox`}
+            aria-expanded={inboxOpen}
+            onClick={() => useNimaStore.getState().toggleInbox()}
+          >
+            {inboxOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </button>
+        </div>
+        {inboxOpen && (
+          <SidebarTree
+            label="Inbox items"
+            rows={inboxRows}
+            empty="All caught up"
+            more={{ to: "/inbox", label: "Open Inbox" }}
+            onOpen={closeMobile}
+          />
+        )}
         <div className={styles["bara-nav-divider"]} role="separator" />
         <p className={styles["bara-apps-label"]}>Your apps</p>
         <Link to="/goals" onClick={closeMobile}>
@@ -351,6 +459,9 @@ export function BaraFrame({ children }: { children: ReactNode }) {
         className={styles["nima-frame"]}
         data-bara-workspace
         data-nima-daily={isAssistant || undefined}
+        data-bara-chat={
+          (ref && (isAssistant || Boolean(activeBot) || workSessionConversation)) || undefined
+        }
       >
         <div className={styles["nima-center"]}>
           <div className={`${styles["nima-topbar"]} ${isElectron ? "drag-region" : ""}`}>

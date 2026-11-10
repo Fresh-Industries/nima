@@ -6,7 +6,14 @@ import { newThreadId } from "../lib/utils";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import { useBots } from "./useBots";
 import { usePersonalAssistant } from "./usePersonalAssistant";
-import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
+import { RelativeTime } from "../components/RelativeTime";
+import {
+  needsYouReason,
+  threadNeedsYou,
+  threadWorkState,
+  WORK_STATE_LABEL,
+  type WorkState,
+} from "./workState";
 import { useAtomValue } from "@effect/atom-react";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { SaveResultButton } from "./SaveResultButton";
@@ -56,8 +63,6 @@ export function useWorkspaceThreads() {
             value.environmentId === thread.environmentId && value.threadId === thread.id,
         )?.[0];
   const review = useWorkspaceReview();
-  const needsInput = (thread: EnvironmentThreadShell) =>
-    thread.hasPendingApprovals || thread.hasPendingUserInput || thread.hasActionableProposedPlan;
   return {
     threads,
     dailyDate,
@@ -76,7 +81,7 @@ export function useWorkspaceThreads() {
         meta?.kind !== "focus"
       )
         return false;
-      if (threadRuntimeIsActive(thread.runtime) || needsInput(thread)) return true;
+      if (threadRuntimeIsActive(thread.runtime) || threadNeedsYou(thread)) return true;
       if (meta?.state === "review" || meta?.state === "settled") return false;
       if (meta?.state === "active") return true;
       if (thread.settledAt || meta?.latestRunIsBot) return false;
@@ -89,34 +94,60 @@ export function useWorkspaceThreads() {
   };
 }
 
-export function ThreadPreview({
-  thread,
-  onOpen,
-  showWorking = false,
-  backgroundWorking = false,
+const WORK_GROUPS: { label: string; states: readonly WorkState[] }[] = [
+  { label: "Needs you", states: ["needs-you"] },
+  { label: "In progress", states: ["working", "queued"] },
+  { label: "Stopped", states: ["stopped"] },
+  { label: "Ready to continue", states: ["ready"] },
+];
+
+const WORK_STATE_ORDER: Record<WorkState, number> = {
+  "needs-you": 0,
+  working: 1,
+  queued: 2,
+  stopped: 3,
+  ready: 4,
+};
+
+export function sortByWorkState<T>(entries: readonly T[], state: (entry: T) => WorkState): T[] {
+  return [...entries].sort((a, b) => WORK_STATE_ORDER[state(a)] - WORK_STATE_ORDER[state(b)]);
+}
+
+/** The pulse is the shared stepped `status-pulse`, so it never repaints every frame. */
+export function WorkStateDot({ state }: { state: WorkState }) {
+  return (
+    <span
+      aria-hidden
+      className={`${styles["bara-state-dot"]} ${state === "working" ? "motion-safe:animate-status-pulse" : ""}`}
+      data-work-state={state}
+    />
+  );
+}
+
+export function WorkTreeRow({
+  environmentId,
+  threadId,
   title,
+  state,
+  onOpen,
 }: {
-  thread: EnvironmentThreadShell;
+  environmentId: EnvironmentId;
+  threadId: EnvironmentThreadShell["id"];
+  title: string;
+  state: WorkState;
   onOpen: () => void;
-  showWorking?: boolean;
-  backgroundWorking?: boolean | undefined;
-  title?: string | undefined;
 }) {
-  const metadata = useNimaStore((state) => state.focus[keyFor(thread)]);
-  const working =
-    backgroundWorking ||
-    threadRuntimeIsActive(thread.runtime) ||
-    backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks);
   return (
     <Link
-      className={styles["nima-thread-preview"]}
+      className={styles["bara-tree-row"]}
       to="/$environmentId/$threadId"
-      params={{ environmentId: thread.environmentId, threadId: thread.id }}
+      params={{ environmentId, threadId }}
       onClick={onOpen}
+      data-work-state={state}
     >
-      <span className={[styles["nima-dot"], working ? styles.running : ""].join(" ")} />
-      <span>{title || metadata?.title || thread.title}</span>
-      {showWorking && working && <small>· Working</small>}
+      <WorkStateDot state={state} />
+      <span className={styles["bara-tree-title"]}>{title}</span>
+      <small className={state === "ready" ? "sr-only" : undefined}>{WORK_STATE_LABEL[state]}</small>
     </Link>
   );
 }
@@ -238,6 +269,16 @@ export function ConversationList({
         .toLowerCase()
         .includes(query.toLowerCase()),
   );
+  const rows = items.map((thread) => {
+    const key = keyFor(thread);
+    const meta = review.metadata.get(key);
+    const state = threadWorkState(thread, Boolean(meta?.assistantWorkPending || meta?.workPending));
+    return { thread, key, meta, state };
+  });
+  const summary = WORK_GROUPS.flatMap((group) => {
+    const count = rows.filter((row) => group.states.includes(row.state)).length;
+    return count ? [`${count} ${group.label.toLowerCase()}`] : [];
+  }).join(" · ");
   const update = async (thread: EnvironmentThreadShell, retire: boolean) => {
     if (pending) return;
     setPending(keyFor(thread));
@@ -257,6 +298,7 @@ export function ConversationList({
       <header className={styles["nima-page-header"]}>
         <div>
           <h1>{project?.title ?? "Work"}</h1>
+          {view !== "projects" && summary && <p>{summary}</p>}
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -331,77 +373,101 @@ export function ConversationList({
                 available.
               </p>
             ))}
-          <div className={styles["nima-conversation-list"]}>
-            {items.map((thread) => {
-              const key = keyFor(thread);
-              const meta = review.metadata.get(key);
-              const running =
-                threadRuntimeIsActive(thread.runtime) ||
-                Boolean(meta?.assistantWorkPending || meta?.workPending) ||
-                backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks);
-              const canWrite = review.hosts.find(
-                (host) => host.environmentId === thread.environmentId,
-              )?.canWrite;
-              return (
-                <article className={styles["nima-conversation"]} key={key}>
-                  <Link
-                    to="/$environmentId/$threadId"
-                    params={{ environmentId: thread.environmentId, threadId: thread.id }}
-                  >
-                    <span className={styles["nima-thread-project"]}>
-                      {meta?.coordinatorBotId ? "Coordinated work" : "Focus session"}
-                    </span>
-                    <h2>{meta?.title || focus[key]?.title || thread.title}</h2>
-                    <p>
-                      {meta?.objective ||
-                        focus[key]?.objective ||
-                        thread.source.latestVisibleMessage?.text ||
-                        "Open the conversation to continue."}
-                    </p>
-                    <small>
-                      {thread.hasPendingApprovals ||
-                      thread.hasPendingUserInput ||
-                      thread.hasActionableProposedPlan
-                        ? "Needs your input"
-                        : running
-                          ? "Agent working"
-                          : "Ready to continue"}
-                    </small>
-                  </Link>
-                  <div className={styles["nima-row-actions"]}>
-                    {thread.latestRun?.completedAt && (
-                      <SaveResultButton
-                        key={thread.latestRun.runId}
-                        environmentId={thread.environmentId}
-                        threadId={thread.id}
-                        runId={thread.latestRun.runId}
-                        title={meta?.title || thread.title}
-                      />
-                    )}
-                    <button
-                      disabled={!canWrite || pending !== null || running}
-                      onClick={() => void update(thread, false)}
-                    >
-                      Send to Inbox
-                    </button>
-                    <button
-                      disabled={!canWrite || pending !== null || running}
-                      onClick={() => void update(thread, true)}
-                    >
-                      Retire
-                    </button>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
+          {WORK_GROUPS.map((group) => {
+            const groupRows = rows.filter((row) => group.states.includes(row.state));
+            if (!groupRows.length) return null;
+            return (
+              <section
+                key={group.label}
+                aria-label={group.label}
+                className={styles["bara-work-group"]}
+              >
+                <h2>
+                  {group.label}
+                  <span>{groupRows.length}</span>
+                </h2>
+                {groupRows.map(({ thread, key, meta, state }) => {
+                  const running = state === "working" || state === "queued";
+                  const canWrite = review.hosts.find(
+                    (host) => host.environmentId === thread.environmentId,
+                  )?.canWrite;
+                  const startedAt = thread.runtime?.activityStartedAt;
+                  return (
+                    <article className={styles["bara-work-card"]} key={key} data-work-state={state}>
+                      <WorkStateDot state={state} />
+                      <Link
+                        to="/$environmentId/$threadId"
+                        params={{ environmentId: thread.environmentId, threadId: thread.id }}
+                      >
+                        <h3>{meta?.title || focus[key]?.title || thread.title}</h3>
+                        <p>
+                          {meta?.objective ||
+                            focus[key]?.objective ||
+                            thread.source.latestVisibleMessage?.text ||
+                            "Open the conversation to continue."}
+                        </p>
+                        <small>
+                          <span data-work-state={state}>
+                            {state === "needs-you"
+                              ? needsYouReason(thread)
+                              : WORK_STATE_LABEL[state]}
+                          </span>
+                          {running && startedAt ? (
+                            <>
+                              {" · started "}
+                              <RelativeTime timestamp={startedAt} />
+                            </>
+                          ) : null}
+                          {" · "}
+                          {meta?.coordinatorBotId ? "Coordinated work" : "Focus session"}
+                        </small>
+                      </Link>
+                      <div className={styles["nima-row-actions"]}>
+                        {thread.latestRun?.completedAt && (
+                          <SaveResultButton
+                            key={thread.latestRun.runId}
+                            environmentId={thread.environmentId}
+                            threadId={thread.id}
+                            runId={thread.latestRun.runId}
+                            title={meta?.title || thread.title}
+                          />
+                        )}
+                        <button
+                          disabled={!canWrite || pending !== null || running}
+                          onClick={() => void update(thread, false)}
+                        >
+                          Send to Inbox
+                        </button>
+                        <button
+                          disabled={!canWrite || pending !== null || running}
+                          onClick={() => void update(thread, true)}
+                        >
+                          Retire
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </section>
+            );
+          })}
           {!items.length && (
             <div className={styles["nima-empty"]}>
               <span>
                 <Layers size={26} />
               </span>
-              <h2>{query ? "No matching conversations" : "No active sessions"}</h2>
-              <p>Start a focus session{project ? ` in ${project.title}` : ""}.</p>
+              <h2>{query ? "No matching conversations" : "Nothing in progress"}</h2>
+              <p>
+                {query
+                  ? "Try a different search."
+                  : `Start a Focus session${project ? ` in ${project.title}` : ""} and it stays here while the agent works.`}
+              </p>
+              {!query && review.pendingCount > 0 && (
+                <Link to="/inbox" className={styles["bara-empty-link"]}>
+                  {review.pendingCount} finished{" "}
+                  {review.pendingCount === 1 ? "result is" : "results are"} waiting in Inbox →
+                </Link>
+              )}
             </div>
           )}
         </>

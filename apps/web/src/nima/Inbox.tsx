@@ -8,6 +8,10 @@ import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
 import { Bot, Check, Inbox, RotateCcw } from "lucide-react";
 import { useState } from "react";
 import { inboxSummary } from "./inboxSummary";
+import { RelativeTime } from "../components/RelativeTime";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../components/ui/tooltip";
+import { WorkStateDot } from "./Workspace";
+import { needsYouReason, threadNeedsYou, threadWorkState, type WorkState } from "./workState";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { useThreadActions } from "../hooks/useThreadActions";
@@ -54,10 +58,14 @@ export function WorkspaceInbox() {
     }
     setBusy(false);
   };
-  const attention = threads.filter(
-    (thread) =>
-      thread.hasPendingApprovals || thread.hasPendingUserInput || thread.hasActionableProposedPlan,
-  );
+  const attention = threads.filter(threadNeedsYou);
+  const summary =
+    [
+      attention.length ? `${attention.length} need${attention.length === 1 ? "s" : ""} you` : "",
+      review.pendingCount ? `${review.pendingCount} to review` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ") || "All caught up";
   const items = review.items.filter((item) =>
     `${item.title} ${item.summary}`.toLowerCase().includes(search.toLowerCase()),
   );
@@ -73,6 +81,7 @@ export function WorkspaceInbox() {
       <header className={styles["nima-page-header"]}>
         <div>
           <h1>Inbox</h1>
+          {review.connected && <p>{summary}</p>}
         </div>
       </header>
       <BotToolApprovals settled={view === "settled"} />
@@ -120,8 +129,11 @@ export function WorkspaceInbox() {
         </p>
       )}
       {view === "review" && attention.length > 0 && (
-        <section aria-label="Needs your input" className="mb-8">
-          <h2 className="mb-2 text-sm font-medium text-muted-foreground">Needs your input</h2>
+        <section aria-label="Needs you" className={styles["bara-work-group"]}>
+          <h2>
+            Needs you
+            <span>{attention.length}</span>
+          </h2>
           {attention
             .filter((thread) => thread.title.toLowerCase().includes(search.toLowerCase()))
             .map((thread) => (
@@ -129,15 +141,31 @@ export function WorkspaceInbox() {
                 key={`${thread.environmentId}:${thread.id}`}
                 to="/$environmentId/$threadId"
                 params={{ environmentId: thread.environmentId, threadId: thread.id }}
-                className="flex items-center justify-between gap-4 border-b border-border py-4 text-sm outline-none hover:text-primary focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                className={styles["bara-work-card"]}
+                data-work-state="needs-you"
               >
-                <span>{thread.title}</span>
-                <span className="shrink-0 text-xs text-muted-foreground">Open conversation →</span>
+                <WorkStateDot state="needs-you" />
+                <span>
+                  <h3>{thread.title}</h3>
+                  <small>
+                    <span data-work-state="needs-you">{needsYouReason(thread)}</span>
+                  </small>
+                </span>
+                <span className={styles["bara-card-cta"]}>Respond →</span>
               </Link>
             ))}
         </section>
       )}
-      <section aria-label={view === "review" ? "Results to review" : "Settled results"}>
+      <section
+        aria-label={view === "review" ? "Results to review" : "Settled results"}
+        className={styles["bara-work-group"]}
+      >
+        {view === "review" && items.length > 0 && (
+          <h2>
+            Ready to review
+            <span>{review.pendingCount || items.length}</span>
+          </h2>
+        )}
         {items.map((item) => (
           <ReviewRow
             key={`${item.environmentId}:${item.key}`}
@@ -160,7 +188,8 @@ export function WorkspaceInbox() {
         review.connected &&
         !review.errors.length &&
         !items.length &&
-        !review.pendingCount && (
+        !review.pendingCount &&
+        !(view === "review" && attention.length) && (
           <div className={styles["nima-empty"]}>
             <span>
               <Inbox size={26} />
@@ -215,13 +244,23 @@ function ReviewRow({
     (threadRuntimeIsActive(thread.runtime) ||
       backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks)),
   );
-  const needsInput = Boolean(
-    thread &&
-    (thread.hasPendingApprovals || thread.hasPendingUserInput || thread.hasActionableProposedPlan),
-  );
+  const needsInput = Boolean(thread && threadNeedsYou(thread));
+  const state: WorkState =
+    item.state === "settled"
+      ? "ready"
+      : thread
+        ? threadWorkState(thread, running)
+        : item.status && item.status !== "completed"
+          ? "stopped"
+          : "ready";
   return (
-    <article className="border-b border-border py-5">
-      <div className="flex items-start justify-between gap-4">
+    <article
+      className={styles["bara-review-card"]}
+      data-work-state={state}
+      data-settled={item.state === "settled" || undefined}
+    >
+      <WorkStateDot state={state} />
+      <div className="flex min-w-0 flex-1 items-start justify-between gap-4">
         <Link
           to="/$environmentId/$threadId"
           params={{ environmentId: item.environmentId, threadId: item.threadId }}
@@ -231,15 +270,20 @@ function ReviewRow({
             {item.kind === "bot" && <Bot size={13} />}
             {item.kind === "bot" ? "Routine run" : "Focus session"}
             <span>·</span>
-            <time dateTime={item.completedAt}>
-              {new Date(item.completedAt).toLocaleString(undefined, {
-                dateStyle: "medium",
-                timeStyle: "short",
-              })}
-            </time>
+            <Tooltip>
+              <TooltipTrigger render={<time dateTime={item.completedAt} />}>
+                <RelativeTime timestamp={item.completedAt} />
+              </TooltipTrigger>
+              <TooltipPopup side="top">
+                {new Date(item.completedAt).toLocaleString(undefined, {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                })}
+              </TooltipPopup>
+            </Tooltip>
             {item.status && item.status !== "completed" && <span>· {item.status}</span>}
           </span>
-          <h2 className="text-base font-medium">{item.title}</h2>
+          <h3 className="text-base font-medium">{item.title}</h3>
           <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
             {summary || "Open the conversation to review the result."}
           </p>

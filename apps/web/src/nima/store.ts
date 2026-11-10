@@ -64,6 +64,7 @@ interface NimaState {
   setStudioWidth: (width: number) => void;
   workExpanded: boolean;
   botsExpanded: boolean;
+  inboxExpanded: boolean;
   setAssistantAvatar: (avatar: string) => void;
   rememberAssistant: (conversation: DailyConversation) => void;
   saveNotes: (notes: string) => void;
@@ -72,6 +73,8 @@ interface NimaState {
   expandSurface: (expanded: boolean) => void;
   toggleWork: () => void;
   toggleBots: () => void;
+  toggleInbox: () => void;
+  expandNav: (section: "work" | "inbox") => void;
   reasoning: "low" | "medium" | "high" | "xhigh";
   setReasoning: (reasoning: "low" | "medium" | "high" | "xhigh") => void;
   timezone: string;
@@ -127,6 +130,7 @@ export const useNimaStore = create<NimaState>()(
         set({ studioWidth: Number.isFinite(studioWidth) ? Math.max(280, studioWidth) : 640 }),
       workExpanded: true,
       botsExpanded: true,
+      inboxExpanded: true,
       setAssistantAvatar: (avatar) => set({ assistantAvatar: avatar.trim().slice(0, 32) || "🍊" }),
       rememberAssistant: (assistantConversation) => set({ assistantConversation }),
       saveNotes: (notes) => set({ notes }),
@@ -135,6 +139,9 @@ export const useNimaStore = create<NimaState>()(
       expandSurface: (surfaceExpanded) => set({ surfaceExpanded }),
       toggleWork: () => set((state) => ({ workExpanded: !state.workExpanded })),
       toggleBots: () => set((state) => ({ botsExpanded: !state.botsExpanded })),
+      toggleInbox: () => set((state) => ({ inboxExpanded: !state.inboxExpanded })),
+      expandNav: (section) =>
+        set(section === "work" ? { workExpanded: true } : { inboxExpanded: true }),
       reasoning: "xhigh",
       setReasoning: (reasoning) => set({ reasoning }),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,

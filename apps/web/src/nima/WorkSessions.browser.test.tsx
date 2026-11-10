@@ -196,6 +196,8 @@ it("creates personal Work with an existing Bot, keeps the objective in its own c
     .click();
   await expect.poll(() => router.state.location.pathname).toBe("/inbox");
   await expect.element(page.getByRole("heading", { name: "Inbox", exact: true })).toBeVisible();
-  await expect.element(page.getByText("Checkout fix", { exact: true })).toBeVisible();
+  await expect
+    .element(page.getByRole("article").getByText("Checkout fix", { exact: true }))
+    .toBeVisible();
   await page.screenshot({ path: "/workspace/nima/.t3/work-inbox-handoff.png" });
 });

@@ -855,6 +855,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       ) : null}
       <div
         data-user-message-bubble="true"
+        data-grouped-next={row.groupedWithNext || undefined}
         className={cn(
           "relative min-w-0 max-w-[80%] rounded-2xl text-message-foreground",
           (mediaAboveText || row.groupedWithPrevious) && "rounded-tr-md",

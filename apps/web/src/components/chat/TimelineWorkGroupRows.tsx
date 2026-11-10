@@ -1,4 +1,5 @@
 import { TimelinePendingApprovalRow } from "./TimelinePendingApprovalRow";
+import { useBaraChat } from "../../nima/useBaraChat";
 import { WorkLogButton, WorkLogList, WorkLogRow } from "./WorkLog";
 import type { WorktreeSetupSnapshot } from "@t3tools/contracts";
 import { type ToolActivityIcon } from "@t3tools/contracts";
@@ -278,6 +279,7 @@ const workEntryKey = (entry: TimelineWorkEntry) => entry.id;
 export function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
   const { isCompacting, isPreparingWorktree, backgroundWorktreeSetup } =
     use(TimelineRowActivityCtx);
+  const baraChat = useBaraChat();
   const compacting = row.compacting === true || isCompacting;
   const shimmer = isPreparingWorktree || compacting;
   const label = isPreparingWorktree ? (
@@ -291,6 +293,28 @@ export function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: 
   ) : (
     "Working..."
   );
+  if (baraChat && !shimmer)
+    return (
+      <div className="flex items-center gap-2 px-1 pb-2 pt-1" data-bara-typing>
+        <span role="status" aria-label="Working" data-bara-typing-bubble>
+          {[0, 1, 2].map((dot) => (
+            <span
+              key={dot}
+              className="motion-safe:animate-status-pulse"
+              style={{ animationDelay: `${dot * 0.25}s` }}
+            />
+          ))}
+        </span>
+        {row.createdAt ? (
+          <span className="text-xs text-muted-foreground tabular-nums">
+            <WorkingTimer createdAt={row.createdAt} />
+          </span>
+        ) : null}
+        {backgroundWorktreeSetup ? (
+          <BackgroundWorktreeSetupChip snapshot={backgroundWorktreeSetup} />
+        ) : null}
+      </div>
+    );
   return (
     <div className="border-b border-border/60 pb-2 pt-1">
       <div className="flex h-6 min-w-0 items-baseline gap-2 px-1 text-sm leading-relaxed text-muted-foreground tabular-nums">

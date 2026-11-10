@@ -1,4 +1,6 @@
 import { usePersonalChat } from "../../nima/useDailyConversation";
+import { useBaraChat } from "../../nima/useBaraChat";
+import { useBotConversation } from "../../nima/useBots";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
 import { environmentThreadDetails } from "../../state/threads";
@@ -36,6 +38,8 @@ const NO_FOCUS_THREAD = Atom.make(undefined);
 export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
   const isPersonalChat = usePersonalChat();
+  const isBaraChat = useBaraChat();
+  const bot = useBotConversation();
   const {
     config: { name: personalAgentName },
   } = usePersonalAssistant();
@@ -59,10 +63,10 @@ export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind
     <>
       <div
         className="relative min-w-0 px-1 py-0.5"
-        data-nima-assistant-bubble={isPersonalChat || undefined}
+        data-nima-assistant-bubble={isBaraChat || undefined}
       >
         <MessageAuthorHeading>
-          {isPersonalChat ? personalAgentName : "T3 Code"}
+          {isPersonalChat ? personalAgentName : (bot?.config.name ?? "T3 Code")}
         </MessageAuthorHeading>
         <div data-thread-find-text="true">
           <AssistantCitationSource
