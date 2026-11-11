@@ -1,5 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Today } from "../nima/Workspace";
+import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { HostedEmptyState } from "../components/HostedEmptyState";
 import { useEnvironments } from "../state/environments";
 
@@ -10,6 +9,7 @@ function Home() {
     if (!isReady) return null;
     if (environments.length === 0) return <HostedEmptyState />;
   }
-  return <Today />;
+  // The Desk is home; the Assistant lives in its dock on every page.
+  return <Navigate to="/work" replace />;
 }
 export const Route = createFileRoute("/_chat/")({ component: Home });

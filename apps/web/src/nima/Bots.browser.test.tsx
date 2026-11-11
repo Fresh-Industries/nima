@@ -85,7 +85,7 @@ it("creates a project-free teammate, edits its configuration, and opens its sepa
     .fill("Help me cook vegetarian meals.");
   await page.getByRole("button", { name: "Create bot", exact: true }).click();
   await expect.element(page.getByRole("heading", { name: "Chef", exact: true })).toBeVisible();
-  await page.screenshot({ path: "/workspace/nima/.t3/bots-directory-light.png" });
+  await page.screenshot({ path: "./.t3/bots-directory-light.png" });
   await page.getByRole("link", { name: "Settings for Chef" }).click();
   await page.getByText("Advanced settings", { exact: true }).click();
   await page
@@ -125,15 +125,15 @@ it("creates a project-free teammate, edits its configuration, and opens its sepa
     .getByRole("combobox", { name: "Bara tool access", exact: true })
     .element()
     .scrollIntoView({ block: "center", behavior: "instant" });
-  await page.screenshot({ path: "/workspace/nima/.t3/bots-settings.png" });
+  await page.screenshot({ path: "./.t3/bots-settings.png" });
   setAppearanceMode("dark");
-  await page.screenshot({ path: "/workspace/nima/.t3/bot-tool-access-dark.png" });
+  await page.screenshot({ path: "./.t3/bot-tool-access-dark.png" });
   await page.viewport(420, 860);
   page
     .getByRole("combobox", { name: "Bara tool access", exact: true })
     .element()
     .scrollIntoView({ block: "center", behavior: "instant" });
-  await page.screenshot({ path: "/workspace/nima/.t3/bot-tool-access-narrow.png" });
+  await page.screenshot({ path: "./.t3/bot-tool-access-narrow.png" });
   await page.viewport(1320, 900);
   setAppearanceMode("light");
   await page.getByRole("link", { name: "Routines →", exact: true }).click();
@@ -184,21 +184,21 @@ it("creates a project-free teammate, edits its configuration, and opens its sepa
   await page.getByRole("button", { name: "Edit", exact: true }).click();
   await expect.element(page.getByText("Weekdays at 18:00 · UTC", { exact: true })).toBeVisible();
   setAppearanceMode("dark");
-  await page.screenshot({ path: "/workspace/nima/.t3/bot-routine-editor-dark.png" });
+  await page.screenshot({ path: "./.t3/bot-routine-editor-dark.png" });
   await page.viewport(420, 860);
-  await page.screenshot({ path: "/workspace/nima/.t3/bot-routine-editor-narrow.png" });
+  await page.screenshot({ path: "./.t3/bot-routine-editor-narrow.png" });
   await page.viewport(1320, 900);
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
-  await page.screenshot({ path: "/workspace/nima/.t3/bot-routine-detail-dark.png" });
+  await page.screenshot({ path: "./.t3/bot-routine-detail-dark.png" });
   setAppearanceMode("light");
-  await page.screenshot({ path: "/workspace/nima/.t3/bot-routine-detail-light.png" });
+  await page.screenshot({ path: "./.t3/bot-routine-detail-light.png" });
 
   await router.navigate({ to: "/bots" });
   setAppearanceMode("dark");
   await expect.element(page.getByRole("heading", { name: "Chef", exact: true })).toBeVisible();
-  await page.screenshot({ path: "/workspace/nima/.t3/bots-directory-dark.png" });
+  await page.screenshot({ path: "./.t3/bots-directory-dark.png" });
   await page.viewport(420, 860);
   await expect.element(page.getByRole("heading", { name: "Chef", exact: true })).toBeVisible();
-  await page.screenshot({ path: "/workspace/nima/.t3/bots-directory-narrow.png" });
+  await page.screenshot({ path: "./.t3/bots-directory-narrow.png" });
   setAppearanceMode("light");
 });

@@ -1,345 +1,29 @@
 import { WorkSessionContext } from "./workSessionContext";
 import { WorkSessionHeader } from "./WorkSessionDetails";
-import { usePersonalAssistant } from "./usePersonalAssistant";
 import { usePageAutosave } from "./pageWrites";
 import { CompanionPanelContext, CompanionPanelHeader } from "./CompanionPanel";
-import { Menu, MenuPopup, MenuTrigger, MenuItem } from "../components/ui/menu";
 import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { type EnvironmentId, type StudioArea } from "@t3tools/contracts";
 import { usePrimaryEnvironmentId } from "../state/environments";
 import { StudioWorkspace } from "./studio/StudioWorkspace";
-import { useLiveActivity } from "./studio/liveActivity";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
-import {
-  Layers,
-  Inbox,
-  Target,
-  Bot,
-  Settings,
-  Search,
-  ChevronDown,
-  ChevronRight,
-  PanelLeft,
-  PanelRight,
-  Folder,
-  BookOpen,
-  CircleUserRound,
-} from "lucide-react";
+import { PanelRight } from "lucide-react";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import { useSidebar } from "../components/ui/sidebar";
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 import { useRightPanelStore } from "../rightPanelStore";
-import { openCommandPalette } from "../commandPaletteBus";
 import { BotConversationContext, useBots } from "./useBots";
 import { useNimaStore } from "./store";
 import { PersonalChatContext, useIsDailyConversation } from "./useDailyConversation";
 import { useImportWorkspaceReview, useWorkspaceReview } from "./useWorkspaceReview";
-import { useWorkspaceThreads, sortByWorkState, WorkTreeRow } from "./Workspace";
-import { threadNeedsYou, threadWorkState, type WorkState } from "./workState";
+import { threadNeedsYou } from "./workState";
 import { WorkSurfaceContent } from "./Surfaces";
 import { BaraTopBar } from "./BaraTopBar";
+import { FloatingAssistant } from "./FloatingAssistant";
+import { BaraDock } from "./BaraDock";
 import styles from "./nima.module.css";
 import { isElectron } from "../env";
-import { isMacPlatform } from "../lib/utils";
 import { observeResize } from "../lib/observeResize";
 import { useVisibleThreadShells } from "../state/entities";
-
-const SIDEBAR_TREE_LIMIT = 6;
-
-function SidebarTree({
-  label,
-  rows,
-  empty,
-  more,
-  onOpen,
-}: {
-  label: string;
-  rows: {
-    key: string;
-    environmentId: EnvironmentId;
-    threadId: Parameters<typeof WorkTreeRow>[0]["threadId"];
-    title: string;
-    state: WorkState;
-  }[];
-  empty: string;
-  more: { to: "/work" | "/inbox"; label: string };
-  onOpen: () => void;
-}) {
-  return (
-    <div className={styles["bara-subnav"]} role="group" aria-label={label}>
-      {rows.slice(0, SIDEBAR_TREE_LIMIT).map((row) => (
-        <WorkTreeRow
-          key={row.key}
-          environmentId={row.environmentId}
-          threadId={row.threadId}
-          title={row.title}
-          state={row.state}
-          onOpen={onOpen}
-        />
-      ))}
-      {rows.length === 0 && <p className={styles["bara-tree-empty"]}>{empty}</p>}
-      {rows.length > SIDEBAR_TREE_LIMIT && (
-        <Link to={more.to} onClick={onOpen} className={styles["bara-tree-more"]}>
-          {more.label} · {rows.length}
-        </Link>
-      )}
-    </div>
-  );
-}
-
-export function BaraSidebar() {
-  const liveActivityHosts = useLiveActivity((state) => state.hosts);
-  const liveActivity = Object.values(liveActivityHosts);
-  const isAssistant = useIsDailyConversation();
-  const {
-    config: { name, avatar },
-  } = usePersonalAssistant();
-  const workOpen = useNimaStore((state) => state.workExpanded);
-  const botsOpen = useNimaStore((state) => state.botsExpanded);
-  const { active, review, threads } = useWorkspaceThreads();
-  const { bots, environmentId: botsEnvironment } = useBots();
-  useImportWorkspaceReview(review);
-  const inboxOpen = useNimaStore((state) => state.inboxExpanded);
-  const focusTitles = useNimaStore((state) => state.focus);
-  const metaFor = (thread: (typeof threads)[number]) =>
-    review.metadata.get(
-      scopedThreadKey({ environmentId: thread.environmentId, threadId: thread.id }),
-    );
-  const titleFor = (thread: (typeof threads)[number]) =>
-    metaFor(thread)?.title ||
-    focusTitles[scopedThreadKey({ environmentId: thread.environmentId, threadId: thread.id })]
-      ?.title ||
-    thread.title;
-  const workRows = sortByWorkState(
-    active.map((thread) => {
-      const meta = metaFor(thread);
-      return {
-        key: `${thread.environmentId}:${thread.id}`,
-        environmentId: thread.environmentId,
-        threadId: thread.id,
-        title: titleFor(thread),
-        state: threadWorkState(thread, Boolean(meta?.assistantWorkPending || meta?.workPending)),
-      };
-    }),
-    (row) => row.state,
-  );
-  const needsYou = threads.filter(threadNeedsYou);
-  const inboxRows = [
-    ...needsYou.map((thread) => ({
-      key: `${thread.environmentId}:${thread.id}`,
-      environmentId: thread.environmentId,
-      threadId: thread.id,
-      title: titleFor(thread),
-      state: "needs-you" as const,
-    })),
-    ...review.items
-      .filter(
-        (item) =>
-          item.state !== "settled" &&
-          !needsYou.some(
-            (thread) => thread.environmentId === item.environmentId && thread.id === item.threadId,
-          ),
-      )
-      .map((item) => ({
-        key: `${item.environmentId}:${item.key}`,
-        environmentId: item.environmentId,
-        threadId: item.threadId,
-        title: item.title,
-        state: "ready" as const,
-      })),
-  ];
-  const unreviewed = review.pendingCount + needsYou.length;
-  const activeBots = bots.filter((bot) => !bot.home && !bot.archived);
-  const { isMobile, setOpenMobile, toggleSidebar } = useSidebar();
-  const closeMobile = () => {
-    if (isMobile) setOpenMobile(false);
-  };
-  return (
-    <div className={styles["nima-sidebar"]}>
-      <div className={`${styles["bara-brand-row"]} ${isElectron ? "drag-region" : ""}`}>
-        <Link to="/" onClick={closeMobile} className={styles["nima-brand"]}>
-          bara<span>.</span>
-        </Link>
-        <button onClick={toggleSidebar} aria-label="Collapse sidebar">
-          <PanelLeft size={16} />
-        </button>
-      </div>
-      <button
-        className={styles["bara-search"]}
-        aria-label="Search"
-        onClick={() => openCommandPalette()}
-      >
-        <Search size={15} />
-        <span>Search</span>
-        <kbd>{isMacPlatform(navigator.platform) ? "⌘ K" : "Ctrl K"}</kbd>
-      </button>
-      <nav className={styles["nima-primary-nav"]} aria-label="Bara workspace">
-        <Link
-          to="/"
-          onClick={closeMobile}
-          activeOptions={{ exact: true }}
-          data-nima-active={isAssistant || undefined}
-          aria-current={isAssistant ? "page" : undefined}
-        >
-          <span className={styles["bara-small-avatar"]}>{avatar}</span>
-          {name}
-        </Link>
-        <div className={styles["bara-nav-group"]}>
-          <Link
-            to="/work"
-            onClick={() => {
-              closeMobile();
-              useNimaStore.getState().expandNav("work");
-            }}
-          >
-            <Layers size={17} />
-            Work
-          </Link>
-          <button
-            aria-label={`${workOpen ? "Collapse" : "Expand"} work sessions`}
-            aria-expanded={workOpen}
-            onClick={() => useNimaStore.getState().toggleWork()}
-          >
-            {workOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          </button>
-        </div>
-        {workOpen && (
-          <SidebarTree
-            label="Active work sessions"
-            rows={workRows}
-            empty="Nothing running"
-            more={{ to: "/work", label: "All work" }}
-            onOpen={closeMobile}
-          />
-        )}
-        <div className={styles["bara-nav-group"]}>
-          <Link
-            to="/inbox"
-            onClick={() => {
-              closeMobile();
-              useNimaStore.getState().expandNav("inbox");
-            }}
-          >
-            <Inbox size={17} />
-            Inbox
-            {unreviewed > 0 && (
-              <span
-                className={styles["bara-count"]}
-                data-attention={needsYou.length > 0 || undefined}
-              >
-                {unreviewed}
-              </span>
-            )}
-          </Link>
-          <button
-            aria-label={`${inboxOpen ? "Collapse" : "Expand"} inbox`}
-            aria-expanded={inboxOpen}
-            onClick={() => useNimaStore.getState().toggleInbox()}
-          >
-            {inboxOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          </button>
-        </div>
-        {inboxOpen && (
-          <SidebarTree
-            label="Inbox items"
-            rows={inboxRows}
-            empty="All caught up"
-            more={{ to: "/inbox", label: "Open Inbox" }}
-            onOpen={closeMobile}
-          />
-        )}
-        <div className={styles["bara-nav-divider"]} role="separator" />
-        <p className={styles["bara-apps-label"]}>Your apps</p>
-        <Link to="/goals" onClick={closeMobile}>
-          <Target size={17} />
-          Goals
-        </Link>
-        <div className={styles["bara-nav-group"]}>
-          <Link to="/bots" onClick={closeMobile}>
-            <Bot size={17} />
-            Bots
-          </Link>
-          <button
-            aria-label={`${botsOpen ? "Collapse" : "Expand"} bots`}
-            aria-expanded={botsOpen}
-            onClick={() => useNimaStore.getState().toggleBots()}
-          >
-            {botsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          </button>
-        </div>
-        {botsOpen && (
-          <div className={styles["bara-subnav"]}>
-            {activeBots.slice(0, 4).map((bot) => (
-              <Link
-                key={bot.id}
-                to="/bots"
-                activeOptions={{ exact: true, includeSearch: true }}
-                search={{
-                  ...(botsEnvironment ? { environmentId: botsEnvironment } : {}),
-                  botId: bot.id,
-                }}
-                onClick={closeMobile}
-              >
-                {bot.config.name}
-              </Link>
-            ))}
-          </div>
-        )}
-        <Link to="/spaces" onClick={closeMobile}>
-          <BookOpen size={17} />
-          Library
-        </Link>
-        <Link to="/studio" onClick={closeMobile}>
-          <Folder size={17} />
-          Studio
-        </Link>
-      </nav>
-      <div className={styles["bara-sidebar-spacer"]} />
-      <div className={styles["nima-sidebar-bottom"]}>
-        {liveActivity.map((activity) => (
-          <Link
-            key={activity.environmentId}
-            to="/studio"
-            search={{ area: "live", environmentId: activity.environmentId }}
-            onClick={closeMobile}
-            className="mb-2 flex items-center gap-2 rounded-md bg-accent px-3 py-2 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-          >
-            <span className="size-1.5 rounded-full bg-primary" />
-            {activity.broadcast
-              ? "Live broadcast"
-              : activity.recording
-                ? "Recording"
-                : "Live sources active"}
-            <span className="ms-auto">Open →</span>
-          </Link>
-        ))}
-        <div className={styles["bara-profile"]}>
-          <Menu>
-            <MenuTrigger
-              render={
-                <button className={styles["bara-account"]} aria-label="Account menu">
-                  <CircleUserRound size={21} />
-                  <span>Personal workspace</span>
-                </button>
-              }
-            />
-            <MenuPopup side="top" align="start">
-              <MenuItem
-                render={<Link to="/work" search={{ view: "projects" }} onClick={closeMobile} />}
-              >
-                <Folder size={15} />
-                Projects
-              </MenuItem>
-            </MenuPopup>
-          </Menu>
-          <Link to="/settings/general" aria-label="Settings">
-            <Settings size={17} />
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export function BaraFrame({ children }: { children: ReactNode }) {
   const frameRef = useRef<HTMLDivElement>(null);
@@ -368,6 +52,7 @@ export function BaraFrame({ children }: { children: ReactNode }) {
   const target = useThreadRouteTarget();
   const ref = target?.kind === "server" ? target.threadRef : null;
   const workReview = useWorkspaceReview();
+  useImportWorkspaceReview(workReview);
   const workMetadata = ref ? workReview.metadata.get(scopedThreadKey(ref)) : undefined;
   const workSessionConversation = workMetadata?.kind === "focus";
   const needsYou = useVisibleThreadShells().some(threadNeedsYou);
@@ -466,7 +151,7 @@ export function BaraFrame({ children }: { children: ReactNode }) {
       >
         <div className={styles["nima-center"]}>
           <div className={`${styles["nima-topbar"]} ${isElectron ? "drag-region" : ""}`}>
-            <BaraTopBar isAssistant={isAssistant} inboxWaiting={inboxWaiting} needsYou={needsYou}>
+            <BaraTopBar inboxWaiting={inboxWaiting} needsYou={needsYou}>
               <button
                 ref={toggleRef}
                 aria-label="Toggle contextual panel"
@@ -520,6 +205,8 @@ export function BaraFrame({ children }: { children: ReactNode }) {
             />
           </div>
         </div>
+        {!modal && <BaraDock />}
+        <FloatingAssistant hidden={isAssistant || modal} />
         <aside
           className={`${styles["bara-companion"]} ${!shown || modal ? styles["bara-hidden"] : ""} ${maximized ? styles["bara-companion-expanded"] : ""}`}
           style={{ width }}

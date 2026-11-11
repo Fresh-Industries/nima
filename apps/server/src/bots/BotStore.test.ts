@@ -10,11 +10,17 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const bots = yield* BotStore.BotStore;
-      const input = { id: BotId.make("chef"), name: "Chef", description: "Help me cook" };
+      const input = {
+        id: BotId.make("chef"),
+        name: "Chef",
+        description: "Help me cook",
+        avatar: "character:cook",
+      };
       const [first, retry] = yield* Effect.all([bots.create(input), bots.create(input)], {
         concurrency: "unbounded",
       });
       assert.deepEqual(first, retry);
+      assert.equal(first.config.avatar, "character:cook");
       assert.equal((yield* bots.list()).bots.length, 2);
       const claims = yield* Effect.all(
         [bots.claimConversation(first.id), bots.claimConversation(first.id)],

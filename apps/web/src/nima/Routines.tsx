@@ -1,3 +1,5 @@
+import { BotAvatar } from "./BotAvatar";
+import { useOpenAssistant } from "./useAssistantThread";
 import {
   scheduleLabel,
   ScheduledRelativeLabel,
@@ -124,6 +126,7 @@ export function Routines(target: BotTarget) {
         ...(target.ownerBotId ? { botId: target.ownerBotId, view: "routines" } : {}),
       },
     });
+  const openAssistant = useOpenAssistant();
   const describe = async () => {
     if (!creationEnvironment || !canCreateRoutine || creationEnvironment.environmentId !== primary)
       return;
@@ -131,7 +134,7 @@ export function Routines(target: BotTarget) {
       ? `Create a routine for my existing ${defaultOwner.config.name} Bot (ownerBotId: ${defaultOwner.id}) on this Bara host. ${BOT_CREATION_PROMPT}`
       : BOT_CREATION_PROMPT;
     useConversationHandoffStore.getState().begin(prompt);
-    await navigate({ to: "/" }).catch(() => {
+    await openAssistant().catch(() => {
       const current = useConversationHandoffStore.getState().request;
       if (current?.prompt === prompt) useConversationHandoffStore.getState().dismiss(current.id);
       toastManager.add(
@@ -443,7 +446,12 @@ function BotDetails({
               search={owningBot.home ? {} : { environmentId, botId: owningBot.id }}
               className="text-sm text-muted-foreground"
             >
-              {owningBot.config.avatar} {owningBot.config.name}
+              <BotAvatar
+                avatar={owningBot.config.avatar}
+                name={owningBot.config.name}
+                seed={owningBot.id}
+              />{" "}
+              {owningBot.config.name}
               {owningBot.archived ? " · archived" : ""}
             </Link>
           )}

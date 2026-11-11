@@ -1,0 +1,241 @@
+/* The Desk: one lane per status, side by side when there is room and stacked when not. */
+.board {
+  margin-top: 6px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
+  align-items: start;
+  gap: 14px;
+}
+.lane {
+  --lane-color: var(--bara-state-ready);
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--nima-side) 70%, transparent);
+}
+.lane[data-work-state="needs-you"] {
+  --lane-color: var(--bara-state-needs-you);
+}
+.lane[data-work-state="working"] {
+  --lane-color: var(--bara-state-working);
+}
+.lane[data-work-state="stopped"] {
+  --lane-color: var(--bara-state-stopped);
+}
+.lane h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--nima-ink);
+}
+.lane h2 > span:last-child {
+  margin-left: auto;
+  font-weight: 500;
+  color: var(--nima-muted);
+}
+.lane ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  gap: 6px;
+}
+.tile {
+  position: relative;
+  border: 1px solid var(--nima-line);
+  border-radius: 12px;
+  background: var(--nima-canvas);
+  transition:
+    border-color 150ms,
+    box-shadow 150ms,
+    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.tile:hover {
+  border-color: color-mix(in srgb, var(--lane-color) 45%, var(--nima-line));
+  box-shadow: 0 6px 18px -12px color-mix(in srgb, var(--nima-ink) 45%, transparent);
+}
+.tile > a {
+  display: grid;
+  gap: 4px;
+  padding: 11px 12px;
+  border-radius: inherit;
+  outline: none;
+}
+.tile > a:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+.status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--nima-sub);
+}
+.status[data-work-state="needs-you"] {
+  color: var(--bara-state-needs-you);
+}
+.tile strong {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 550;
+  line-height: 1.35;
+  color: var(--nima-ink);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.tile small {
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--nima-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Actions stay out of the way until the tile is hovered or focused; touch always shows them. */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 8px 8px;
+}
+.actions button {
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--nima-sub);
+  background: var(--nima-side);
+}
+.actions button:hover:not(:disabled) {
+  color: var(--nima-ink);
+}
+.actions button:disabled {
+  opacity: 0.45;
+}
+@media (hover: hover) {
+  .actions {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    padding: 2px;
+    border-radius: 999px;
+    background: var(--nima-canvas);
+    opacity: 0;
+    transition: opacity 120ms;
+  }
+  .tile:hover .actions,
+  .tile:focus-within .actions {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tile:hover {
+    transform: translateY(-1px);
+  }
+}
+
+/* Opening a tile grows it into the conversation (see markSessionTransition). */
+:global(:root[data-bara-transition="session"] [data-chat-column]:not([data-side-chat-pane] *)) {
+  view-transition-name: bara-session;
+}
+:global(::view-transition-group(bara-session)) {
+  animation-duration: 340ms;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+:global(::view-transition-image-pair(bara-session)) {
+  overflow: clip;
+  border-radius: 12px;
+}
+:global(::view-transition-old(bara-session)) {
+  animation: bara-tile-out 110ms ease-out both;
+}
+/* The conversation keeps its real size and is revealed as the tile's frame grows. */
+:global(::view-transition-new(bara-session)) {
+  width: auto;
+  height: auto;
+  object-fit: none;
+  object-position: top center;
+  animation: none;
+}
+@keyframes bara-tile-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* The assigned Bot, quietly at the foot of its session. */
+.assignee {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--nima-sub);
+}
+.assignee > span {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 11px;
+  background: var(--nima-side);
+}
+
+/* Bots doing something right now. Hidden when the whole team is idle. */
+.team {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 2px 0 12px;
+}
+.team button {
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  align-items: center;
+  max-width: 280px;
+  padding: 6px 12px 6px 6px;
+  border: 1px solid var(--nima-line);
+  border-radius: 999px;
+  text-align: left;
+  background: var(--nima-canvas);
+}
+.team button:hover {
+  border-color: color-mix(in srgb, var(--nima-ink) 18%, var(--nima-line));
+}
+.team button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.team button > span {
+  grid-row: span 2;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 16px;
+  background: var(--nima-side);
+}
+.team strong {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--nima-ink);
+}
+.team small {
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--bara-state-working);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.team button[data-work-state="needs-you"] small {
+  color: var(--bara-state-needs-you);
+}

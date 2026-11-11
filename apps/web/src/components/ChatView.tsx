@@ -1,4 +1,5 @@
 import { useWorkSessionConversation } from "../nima/workSessionContext";
+import { BotAvatar } from "../nima/BotAvatar";
 import { useBotConversation } from "../nima/useBots";
 import { ConversationHandoff } from "../nima/ConversationHandoff";
 import { createPortal } from "react-dom";
@@ -3320,6 +3321,8 @@ export default function ChatView(props: ChatViewProps) {
   const threadPanelHeaderControl = <ThreadPanelHeaderControl {...panelToggleControlProps} />;
   const panelLayoutControls = (
     <WorkspaceTitlebarControls
+      // In Bara's frame the global top bar owns the window corner.
+      inline={companionHost != null}
       showMaximizeControl={!shouldUsePlanSidebarSheet}
       rightPanelOpen={rightPanelOpen}
       animationsActive={panelAnimationsActive}
@@ -3385,7 +3388,9 @@ export default function ChatView(props: ChatViewProps) {
                 className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] h-[var(--workspace-topbar-height)] w-28 [-webkit-app-region:no-drag]"
               />
             ) : null}
-            {!rightPanelControlsAtRoot && !rightPanelControlsInPanel ? panelLayoutControls : null}
+            {!companionHost && !rightPanelControlsAtRoot && !rightPanelControlsInPanel
+              ? panelLayoutControls
+              : null}
             {inlineRightPanelOwnsTitleBar ? threadPanelHeaderControl : null}
             <ChatHeader
               activeThreadEnvironmentId={activeThread.environmentId}
@@ -3403,6 +3408,7 @@ export default function ChatView(props: ChatViewProps) {
                 : {})}
               {...(threadFindEnabled ? { onFindInThread: openThreadFindStable } : {})}
             />
+            {companionHost && !rightPanelControlsInPanel ? panelLayoutControls : null}
           </header>
         )}
 
@@ -3605,7 +3611,11 @@ export default function ChatView(props: ChatViewProps) {
                         ) : botConversation ? (
                           <div className="space-y-3 pb-6 text-center">
                             <div className="text-4xl" aria-hidden="true">
-                              {botConversation.config.avatar}
+                              <BotAvatar
+                                avatar={botConversation.config.avatar}
+                                name={botConversation.config.name}
+                                seed={botConversation.id}
+                              />
                             </div>
                             <h1 className="text-2xl font-medium">{botConversation.config.name}</h1>
                             <p className="text-sm text-muted-foreground">

@@ -11,7 +11,7 @@ import {
   type EnvironmentId,
   type ScheduledTaskId,
 } from "@t3tools/contracts";
-import { ArrowLeft, Bot, Settings, Search, Utensils, Code2 } from "lucide-react";
+import { ArrowLeft, Settings, Search, Utensils, Code2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -33,6 +33,21 @@ import { Routines } from "./Routines";
 import { BotCapabilitiesSettings } from "./BotCapabilitiesSettings";
 import { PersonalMemorySettings } from "./PersonalMemorySettings";
 import { useBots, useOpenBotConversation } from "./useBots";
+import {
+  BOT_CHARACTERS,
+  BotAvatar,
+  CharacterPicker,
+  characterAvatar,
+  characterFor,
+} from "./BotAvatar";
+
+/** An unnamed Bot takes its character's name, else the start of its responsibility. */
+function botNameFrom(avatar: string, description: string) {
+  const character = characterFor(avatar);
+  if (character) return character.label;
+  const words = description.trim().split(/\s+/).filter(Boolean).slice(0, 2).join(" ");
+  return (words.charAt(0).toUpperCase() + words.slice(1)).slice(0, 40);
+}
 
 const failureMessage = (result: Parameters<typeof squashAtomCommandFailure>[0]) => {
   const error = squashAtomCommandFailure(result);
@@ -169,7 +184,12 @@ export function Bots({
                     className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-muted text-xl"
                     aria-hidden="true"
                   >
-                    {bot.config.avatar || <Bot size={21} strokeWidth={1.5} />}
+                    <BotAvatar
+                      avatar={bot.config.avatar}
+                      name={bot.config.name}
+                      seed={bot.id}
+                      fill
+                    />
                   </span>
                   <button
                     disabled={
@@ -208,12 +228,9 @@ export function Bots({
           <CreateBot
             disabled={busy}
             onClose={() => setCreating(false)}
-            onCreate={async (name, description, id) => {
+            onCreate={async (input) => {
               if (!state.environmentId) return "Connect to Bara first.";
-              const result = await create({
-                environmentId: state.environmentId,
-                input: { id, name, description },
-              });
+              const result = await create({ environmentId: state.environmentId, input });
               if (result._tag !== "Success") return failureMessage(result);
               setCreating(false);
               return null;
@@ -230,11 +247,19 @@ function CreateBot({
   disabled,
 }: {
   onClose: () => void;
-  onCreate: (name: string, description: string, id: BotId) => Promise<string | null>;
+  onCreate: (input: {
+    id: BotId;
+    name: string;
+    description: string;
+    avatar: string;
+  }) => Promise<string | null>;
   disabled: boolean;
 }) {
   const [id] = useState(() => BotId.make(randomUUID()));
-  const [name, setName] = useState("New bot");
+  const [name, setName] = useState("");
+  const [avatar, setAvatar] = useState(() =>
+    characterAvatar(BOT_CHARACTERS[Math.floor(Math.random() * BOT_CHARACTERS.length)]!.id),
+  );
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -249,22 +274,35 @@ function CreateBot({
         <DialogHeader>
           <DialogTitle className="sr-only">New bot</DialogTitle>
           <DialogDescription className="sr-only">Name and responsibility</DialogDescription>
-          <input
-            className={formStyles.name}
-            aria-label="Name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            maxLength={80}
-            placeholder="New bot"
-            disabled={busy}
-          />
+          <div className="flex items-center gap-3">
+            <span
+              className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-muted text-2xl"
+              aria-hidden="true"
+            >
+              <BotAvatar avatar={avatar} name={name || description} fill />
+            </span>
+            <input
+              className={formStyles.name}
+              aria-label="Name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              maxLength={80}
+              placeholder={botNameFrom(avatar, description) || "Name your Bot"}
+              disabled={busy}
+            />
+          </div>
         </DialogHeader>
         <form
           className="min-h-0 overflow-y-auto"
           onSubmit={(event) => {
             event.preventDefault();
             setBusy(true);
-            void onCreate(name.trim() || "New bot", description, id).then((message) => {
+            void onCreate({
+              id,
+              name: name.trim() || botNameFrom(avatar, description),
+              description,
+              avatar,
+            }).then((message) => {
               setBusy(false);
               if (message) setError(message);
             });
@@ -291,35 +329,50 @@ function CreateBot({
                       label: "Research",
                       description: "Research questions and cite sources",
                       icon: Search,
+                      character: "owl",
                     },
                     {
                       name: "Chef",
                       label: "Cooking",
                       description: "Help me plan meals and cook",
                       icon: Utensils,
+                      character: "cook",
                     },
                     {
                       name: "Engineer",
                       label: "Code",
                       description: "Help me investigate and build software",
                       icon: Code2,
+                      character: "technologist",
                     },
-                  ].map(({ name: nextName, label, description: nextDescription, icon: Icon }) => (
-                    <button
-                      key={label}
-                      type="button"
-                      disabled={busy}
-                      onClick={() => {
-                        setName(nextName);
-                        setDescription(nextDescription);
-                      }}
-                    >
-                      <Icon size={16} strokeWidth={1.5} />
-                      {label}
-                    </button>
-                  ))}
+                  ].map(
+                    ({
+                      name: nextName,
+                      label,
+                      description: nextDescription,
+                      icon: Icon,
+                      character,
+                    }) => (
+                      <button
+                        key={label}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => {
+                          setName(nextName);
+                          setDescription(nextDescription);
+                          setAvatar(
+                            characterAvatar(character as (typeof BOT_CHARACTERS)[number]["id"]),
+                          );
+                        }}
+                      >
+                        <Icon size={16} strokeWidth={1.5} />
+                        {label}
+                      </button>
+                    ),
+                  )}
                 </div>
               )}
+              <CharacterPicker value={avatar} onChange={setAvatar} disabled={busy} />
               {error && (
                 <p role="alert" className="text-sm text-destructive">
                   {error}
@@ -407,7 +460,8 @@ function BotSettings({
     <article className="space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-medium">
-          {bot.config.avatar} {bot.config.name}
+          <BotAvatar avatar={bot.config.avatar} name={bot.config.name} seed={bot.id} />{" "}
+          {bot.config.name}
         </h2>
         <Button
           size="sm"
@@ -456,16 +510,22 @@ function BotSettings({
             onChange={(event) => setDraft({ ...draft, description: event.target.value })}
           />
         </label>
+        <CharacterPicker
+          value={draft.avatar}
+          onChange={(avatar) => setDraft({ ...draft, avatar })}
+          disabled={disabled}
+        />
         <details className="space-y-5">
           <summary className="cursor-pointer text-sm text-muted-foreground">
             Advanced settings
           </summary>
           <label className="grid gap-2 text-sm">
-            Avatar
+            Emoji or text avatar instead
             <Input
               disabled={disabled}
-              value={draft.avatar}
+              value={characterFor(draft.avatar) ? "" : draft.avatar}
               maxLength={32}
+              placeholder="🦊"
               onChange={(event) => setDraft({ ...draft, avatar: event.target.value })}
             />
           </label>

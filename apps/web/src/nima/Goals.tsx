@@ -1,4 +1,5 @@
 import { usePersonalAssistant } from "./usePersonalAssistant";
+import { useOpenAssistant } from "./useAssistantThread";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { GoalCheckins } from "./GoalCheckins";
 import { useEffect, useState } from "react";
@@ -75,12 +76,13 @@ export function Goals({
       : content.status === view,
   );
   const detail = detailId ? goals.drafts[detailId] : undefined;
+  const openAssistant = useOpenAssistant();
   const beginConversation = async (prompt: string) => {
     setOpening(true);
     setOpenError(null);
     useConversationHandoffStore.getState().begin(prompt);
     try {
-      await navigate({ to: "/" });
+      await openAssistant();
     } catch {
       const request = useConversationHandoffStore.getState().request;
       if (request?.prompt === prompt) useConversationHandoffStore.getState().dismiss(request.id);

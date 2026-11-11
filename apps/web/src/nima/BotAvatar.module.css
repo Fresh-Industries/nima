@@ -1,0 +1,72 @@
+/* Sized by its container; inline in text it matches the line. */
+.character {
+  display: inline-block;
+  width: 100%;
+  max-width: 1.4em;
+  height: auto;
+  aspect-ratio: 1;
+  object-fit: contain;
+  vertical-align: -0.3em;
+  user-select: none;
+}
+.fill {
+  width: 82%;
+  height: 82%;
+  object-fit: contain;
+  user-select: none;
+}
+.picker {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.picker legend {
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--foreground);
+}
+.picker legend span {
+  color: var(--muted-foreground);
+}
+.picker [role="radiogroup"] {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+  gap: 6px;
+}
+.picker button {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  padding: 6px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: var(--muted);
+  transition:
+    transform 140ms ease-out,
+    border-color 140ms,
+    background-color 140ms;
+}
+.picker button img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.picker button:hover {
+  background: color-mix(in srgb, var(--primary) 8%, var(--muted));
+}
+.picker button[aria-checked="true"] {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, var(--background));
+}
+.picker button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.picker button:disabled {
+  opacity: 0.6;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .picker button:hover:not(:disabled) {
+    transform: translateY(-1px) scale(1.04);
+  }
+}

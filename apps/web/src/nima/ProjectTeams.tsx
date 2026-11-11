@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { BotAvatar } from "./BotAvatar";
 import { BotId, type EnvironmentId, type ProjectId, type ProjectTeam } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { useState } from "react";
@@ -208,7 +209,8 @@ function TeamEditor({
                   }
                 />
                 <span>
-                  {bot.config.avatar} {bot.config.name}
+                  <BotAvatar avatar={bot.config.avatar} name={bot.config.name} seed={bot.id} />{" "}
+                  {bot.config.name}
                   {bot.archived ? " · archived" : ""}
                 </span>
               </label>

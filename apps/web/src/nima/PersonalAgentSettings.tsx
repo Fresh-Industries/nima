@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { BotAvatar, CharacterPicker, characterFor } from "./BotAvatar";
 import { Link } from "@tanstack/react-router";
 import { HOME_BOT_ID } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
@@ -96,10 +97,15 @@ function AssistantPreferences({
             onChange={(event) => setDraft({ ...draft, name: event.target.value })}
           />
         </label>
+        <CharacterPicker
+          value={draft.avatar}
+          onChange={(avatar) => setDraft({ ...draft, avatar })}
+          disabled={disabled}
+        />
         <label>
-          Avatar
+          Emoji or text avatar instead
           <Input
-            value={draft.avatar}
+            value={characterFor(draft.avatar) ? "" : draft.avatar}
             maxLength={32}
             disabled={disabled}
             onChange={(event) => setDraft({ ...draft, avatar: event.target.value })}
@@ -199,8 +205,9 @@ function AssistantPreferences({
             <details>
               <summary>Server settings</summary>
               <p>
-                {remote.config.name} · {remote.config.avatar} · {remote.config.timezone} ·{" "}
-                {remote.config.reasoning}
+                {remote.config.name} ·{" "}
+                <BotAvatar avatar={remote.config.avatar} name={remote.config.name} /> ·{" "}
+                {remote.config.timezone} · {remote.config.reasoning}
               </p>
               <p className="whitespace-pre-wrap">
                 {remote.config.instructions || "No custom instructions"}

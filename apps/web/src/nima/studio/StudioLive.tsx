@@ -20,7 +20,7 @@ import { colorHex, hexColor, jsonRecord, type LiveCollection, type LiveSource } 
 import { useStudio, downloadStudioExport, type StudioSession } from "./useStudio";
 import { studioImage } from "./imageImport";
 import { publishWhip, type WhipPublisher } from "./whip";
-import { setLiveActivity } from "./liveActivity";
+import { usePublishLiveActivity } from "./liveActivity";
 
 type Feed = { stream: MediaStream; video: HTMLVideoElement; audio?: MediaStreamAudioSourceNode };
 type Mix = {
@@ -87,17 +87,12 @@ export function StudioLive({ catalog }: { catalog: StudioSession }) {
     }
     setConnected((current) => current.filter((value) => value !== id));
   };
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- exposes owned recording and broadcast activity to navigation without moving the media session
-  useEffect(() => {
-    if (!session.environmentId) return;
-    setLiveActivity(
-      session.environmentId,
-      recording,
-      broadcast !== "idle",
-      connected.length > 0 || mic,
-    );
-    return () => setLiveActivity(session.environmentId!, false, false);
-  }, [session.environmentId, recording, broadcast, connected, mic]);
+  usePublishLiveActivity(
+    session.environmentId,
+    recording,
+    broadcast !== "idle",
+    connected.length > 0 || mic,
+  );
   const edit = (payload: unknown, revision?: number) =>
     session.write("live", revision ?? collection?.revision ?? 0, payload);
   const ensureMix = () => {

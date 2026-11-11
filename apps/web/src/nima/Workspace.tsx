@@ -4,10 +4,12 @@ import { derivePhysicalProjectKey } from "@t3tools/client-runtime/state/project-
 import { BotId, EnvironmentId, ProjectId, HOME_BOT_ID } from "@t3tools/contracts";
 import { newThreadId } from "../lib/utils";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
-import { useBots } from "./useBots";
+import { useBots, useOpenBotConversation } from "./useBots";
+import { BotAvatar } from "./BotAvatar";
 import { usePersonalAssistant } from "./usePersonalAssistant";
 import { RelativeTime } from "../components/RelativeTime";
 import {
+  botActivity,
   needsYouReason,
   threadNeedsYou,
   threadWorkState,
@@ -17,11 +19,11 @@ import {
 import { useAtomValue } from "@effect/atom-react";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { SaveResultButton } from "./SaveResultButton";
-import { useStableCallback } from "../hooks/useStableCallback";
 import { NimaDialog } from "./NimaDialog";
 import styles from "./nima.module.css";
+import desk from "./DeskBoard.module.css";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
@@ -96,10 +98,29 @@ export function useWorkspaceThreads() {
 
 const WORK_GROUPS: { label: string; states: readonly WorkState[] }[] = [
   { label: "Needs you", states: ["needs-you"] },
-  { label: "In progress", states: ["working", "queued"] },
+  { label: "Working", states: ["working", "queued"] },
+  { label: "Ready", states: ["ready"] },
   { label: "Stopped", states: ["stopped"] },
-  { label: "Ready to continue", states: ["ready"] },
 ];
+
+function prefersReducedMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+/**
+ * Names the opened tile and the arriving conversation alike, so the route's view transition
+ * grows the tile into the thread. The names clear once the one-shot transition is over.
+ */
+export function markSessionTransition(tile: HTMLElement) {
+  if (prefersReducedMotion() || !("startViewTransition" in document)) return;
+  const root = document.documentElement;
+  tile.style.viewTransitionName = "bara-session";
+  root.dataset.baraTransition = "session";
+  window.setTimeout(() => {
+    tile.style.viewTransitionName = "";
+    delete root.dataset.baraTransition;
+  }, 700);
+}
 
 const WORK_STATE_ORDER: Record<WorkState, number> = {
   "needs-you": 0,
@@ -124,116 +145,6 @@ export function WorkStateDot({ state }: { state: WorkState }) {
   );
 }
 
-export function WorkTreeRow({
-  environmentId,
-  threadId,
-  title,
-  state,
-  onOpen,
-}: {
-  environmentId: EnvironmentId;
-  threadId: EnvironmentThreadShell["id"];
-  title: string;
-  state: WorkState;
-  onOpen: () => void;
-}) {
-  return (
-    <Link
-      className={styles["bara-tree-row"]}
-      to="/$environmentId/$threadId"
-      params={{ environmentId, threadId }}
-      onClick={onOpen}
-      data-work-state={state}
-    >
-      <WorkStateDot state={state} />
-      <span className={styles["bara-tree-title"]}>{title}</span>
-      <small className={state === "ready" ? "sr-only" : undefined}>{WORK_STATE_LABEL[state]}</small>
-    </Link>
-  );
-}
-
-export function Today() {
-  const assistant = usePersonalAssistant();
-  const canOpen = useAtomValue(
-    serverEnvironment.openPersonalAgent.permissionAtom(assistant.environmentId),
-  );
-  const open = useAtomCommand(serverEnvironment.openPersonalAgent, { reportFailure: false });
-  const navigate = useNavigate();
-  const router = useRouter();
-  const opening = useRef(false);
-  const [error, setError] = useState("");
-  const openAssistant = useStableCallback(async () => {
-    if (opening.current || !assistant.connected || !assistant.environmentId || !assistant.profile)
-      return;
-    const environmentId = assistant.environmentId;
-    opening.current = true;
-    let threadId = assistant.profile.threadId;
-    if (canOpen) {
-      const legacy = useNimaStore.getState().assistantConversation;
-      const result = await open({
-        environmentId,
-        input: {
-          legacyConfig: assistant.legacy,
-          ...(legacy?.environmentId === environmentId ? { legacyThreadId: legacy.threadId } : {}),
-        },
-      });
-      if (result._tag !== "Success") {
-        const cause = squashAtomCommandFailure(result);
-        setError(cause instanceof Error ? cause.message : "Could not open your assistant.");
-        opening.current = false;
-        return;
-      }
-      threadId = result.value.threadId;
-      if (threadId && legacy?.environmentId === environmentId) {
-        const drafts = useComposerDraftStore.getState();
-        const pending = drafts.getDraftSession(legacy.draftId);
-        if (pending && !pending.promotedTo)
-          drafts.moveComposerPromptAndImages(
-            legacy.draftId,
-            scopeThreadRef(environmentId, threadId),
-          );
-      }
-    }
-    if (!threadId) setError("Ask the workspace owner to initialize the personal assistant.");
-    else if (router.state.location.pathname === "/")
-      await navigate({
-        to: "/$environmentId/$threadId",
-        params: { environmentId, threadId },
-        replace: true,
-      });
-    opening.current = false;
-  });
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- resolves the server-owned canonical conversation after the primary connection becomes ready
-  useEffect(() => {
-    if (assistant.connected && assistant.profile) void openAssistant();
-  }, [assistant.connected, assistant.profile, openAssistant]);
-  return (
-    <main className={styles["nima-chat-opening"]}>
-      <div className={styles["nima-assistant-avatar"]} aria-hidden="true">
-        {assistant.config.avatar}
-      </div>
-      <h1>{assistant.config.name}</h1>
-      <p role="status">
-        {error ||
-          assistant.query.error ||
-          (assistant.connected ? "Opening your conversation…" : "Connecting to your assistant…")}
-      </p>
-      {(error || assistant.query.error) && (
-        <button
-          className={styles["nima-action"]}
-          onClick={() => {
-            setError("");
-            assistant.query.refresh();
-            void openAssistant();
-          }}
-        >
-          Try again
-        </button>
-      )}
-    </main>
-  );
-}
-
 export function ConversationList({
   botId,
   environmentId,
@@ -247,8 +158,24 @@ export function ConversationList({
   view?: "projects";
   new?: true;
 }) {
-  const { active, review } = useWorkspaceThreads();
+  const { active, review, threads } = useWorkspaceThreads();
   const navigate = useNavigate();
+  const team = useBots();
+  const openBot = useOpenBotConversation(team.environmentId);
+  // Only Bots doing something real right now; an idle team is not news.
+  const onIt = team.bots.flatMap((bot) => {
+    if (bot.home || bot.archived) return [];
+    const now = botActivity({
+      bot,
+      environmentId: team.environmentId,
+      threads,
+      metaFor: (thread) =>
+        review.metadata.get(
+          scopedThreadKey({ environmentId: thread.environmentId, threadId: thread.id }),
+        ),
+    });
+    return now ? [{ bot, now }] : [];
+  });
   const { environments } = useEnvironments();
   const projects = useProjects();
   const project = projects.find(
@@ -300,7 +227,7 @@ export function ConversationList({
     <main className={styles["nima-page"]}>
       <header className={styles["nima-page-header"]}>
         <div>
-          <h1>{project?.title ?? "Work"}</h1>
+          <h1>{project?.title ?? "Desk"}</h1>
           {view !== "projects" && summary && <p>{summary}</p>}
         </div>
         <div className="flex items-center gap-3">
@@ -376,84 +303,134 @@ export function ConversationList({
                 available.
               </p>
             ))}
-          {WORK_GROUPS.map((group) => {
-            const groupRows = rows.filter((row) => group.states.includes(row.state));
-            if (!groupRows.length) return null;
-            return (
-              <section
-                key={group.label}
-                aria-label={group.label}
-                className={styles["bara-work-group"]}
-              >
-                <h2>
-                  {group.label}
-                  <span>{groupRows.length}</span>
-                </h2>
-                {groupRows.map(({ thread, key, meta, state }) => {
-                  const running = state === "working" || state === "queued";
-                  const canWrite = review.hosts.find(
-                    (host) => host.environmentId === thread.environmentId,
-                  )?.canWrite;
-                  const startedAt = thread.runtime?.activityStartedAt;
-                  return (
-                    <article className={styles["bara-work-card"]} key={key} data-work-state={state}>
-                      <WorkStateDot state={state} />
-                      <Link
-                        to="/$environmentId/$threadId"
-                        params={{ environmentId: thread.environmentId, threadId: thread.id }}
-                      >
-                        <h3>{meta?.title || focus[key]?.title || thread.title}</h3>
-                        <p>
-                          {meta?.objective ||
-                            focus[key]?.objective ||
-                            thread.source.latestVisibleMessage?.text ||
-                            "Open the conversation to continue."}
-                        </p>
-                        <small>
-                          <span data-work-state={state}>
-                            {state === "needs-you"
-                              ? needsYouReason(thread)
-                              : WORK_STATE_LABEL[state]}
-                          </span>
-                          {running && startedAt ? (
-                            <>
-                              {" · started "}
-                              <RelativeTime timestamp={startedAt} />
-                            </>
-                          ) : null}
-                          {" · "}
-                          {meta?.coordinatorBotId ? "Coordinated work" : "Focus session"}
-                        </small>
-                      </Link>
-                      <div className={styles["nima-row-actions"]}>
-                        {thread.latestRun?.completedAt && (
-                          <SaveResultButton
-                            key={thread.latestRun.runId}
-                            environmentId={thread.environmentId}
-                            threadId={thread.id}
-                            runId={thread.latestRun.runId}
-                            title={meta?.title || thread.title}
-                          />
-                        )}
-                        <button
-                          disabled={!canWrite || pending !== null || running}
-                          onClick={() => void update(thread, false)}
-                        >
-                          Send to Inbox
-                        </button>
-                        <button
-                          disabled={!canWrite || pending !== null || running}
-                          onClick={() => void update(thread, true)}
-                        >
-                          Retire
-                        </button>
-                      </div>
-                    </article>
-                  );
-                })}
-              </section>
-            );
-          })}
+          {onIt.length > 0 && (
+            <section className={desk.team} aria-label="Bots at work">
+              {onIt.map(({ bot, now }) => (
+                <button
+                  key={bot.id}
+                  type="button"
+                  onClick={() => void openBot.openConversation(bot)}
+                  data-work-state={now.state}
+                >
+                  <span aria-hidden>
+                    <BotAvatar
+                      avatar={bot.config.avatar}
+                      name={bot.config.name}
+                      seed={bot.id}
+                      fill
+                    />
+                  </span>
+                  <strong>{bot.config.name}</strong>
+                  <small>{now.text}</small>
+                </button>
+              ))}
+            </section>
+          )}
+          <div className={desk.board}>
+            {WORK_GROUPS.map((group) => {
+              const groupRows = rows.filter((row) => group.states.includes(row.state));
+              if (!groupRows.length) return null;
+              return (
+                <section
+                  key={group.label}
+                  aria-label={group.label}
+                  className={desk.lane}
+                  data-work-state={group.states[0]}
+                >
+                  <h2>
+                    <WorkStateDot state={group.states[0]!} />
+                    {group.label}
+                    <span>{groupRows.length}</span>
+                  </h2>
+                  <ul>
+                    {groupRows.map(({ thread, key, meta, state }) => {
+                      const running = state === "working" || state === "queued";
+                      const canWrite = review.hosts.find(
+                        (host) => host.environmentId === thread.environmentId,
+                      )?.canWrite;
+                      const startedAt = thread.runtime?.activityStartedAt;
+                      const title = meta?.title || focus[key]?.title || thread.title;
+                      return (
+                        <li key={key} className={desk.tile} data-work-state={state}>
+                          <Link
+                            to="/$environmentId/$threadId"
+                            params={{ environmentId: thread.environmentId, threadId: thread.id }}
+                            viewTransition={!prefersReducedMotion()}
+                            onClick={(event) => markSessionTransition(event.currentTarget)}
+                          >
+                            {(state === "needs-you" || running) && (
+                              <span className={desk.status} data-work-state={state}>
+                                <WorkStateDot state={state} />
+                                {state === "needs-you"
+                                  ? needsYouReason(thread)
+                                  : WORK_STATE_LABEL[state]}
+                                {running && startedAt ? (
+                                  <>
+                                    {" · "}
+                                    <RelativeTime timestamp={startedAt} />
+                                  </>
+                                ) : null}
+                              </span>
+                            )}
+                            <strong>{title}</strong>
+                            <small>
+                              {meta?.objective ||
+                                focus[key]?.objective ||
+                                thread.source.latestVisibleMessage?.text ||
+                                "Focus session"}
+                            </small>
+                            {(() => {
+                              const bot = team.bots.find(
+                                (entry) =>
+                                  entry.id === meta?.coordinatorBotId &&
+                                  team.environmentId === thread.environmentId,
+                              );
+                              return bot ? (
+                                <span className={desk.assignee}>
+                                  <span aria-hidden>
+                                    <BotAvatar
+                                      avatar={bot.config.avatar}
+                                      name={bot.config.name}
+                                      seed={bot.id}
+                                      fill
+                                    />
+                                  </span>
+                                  {bot.config.name}
+                                </span>
+                              ) : null;
+                            })()}
+                          </Link>
+                          <div className={desk.actions}>
+                            {thread.latestRun?.completedAt && (
+                              <SaveResultButton
+                                key={thread.latestRun.runId}
+                                environmentId={thread.environmentId}
+                                threadId={thread.id}
+                                runId={thread.latestRun.runId}
+                                title={title}
+                              />
+                            )}
+                            <button
+                              disabled={!canWrite || pending !== null || running}
+                              onClick={() => void update(thread, false)}
+                            >
+                              Send to Inbox
+                            </button>
+                            <button
+                              disabled={!canWrite || pending !== null || running}
+                              onClick={() => void update(thread, true)}
+                            >
+                              Retire
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              );
+            })}
+          </div>
           {!items.length && (
             <div className={styles["nima-empty"]}>
               <span>

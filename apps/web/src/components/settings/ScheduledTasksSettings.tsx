@@ -1,4 +1,5 @@
 import formStyles from "../../nima/BriefForm.module.css";
+import { BotAvatar } from "../../nima/BotAvatar";
 import { runtimeModeConfig, runtimeModeOptions } from "../chat/runtimeModeConfig";
 import { useBots } from "../../nima/useBots";
 import { useScratchProject } from "../../hooks/useScratchProject";
@@ -1434,7 +1435,8 @@ function ScheduledTaskEditorForm({
             .filter((bot) => !bot.archived || bot.id === ownerBotId)
             .map((bot) => (
               <SelectItem key={bot.id} value={bot.id}>
-                {bot.config.avatar} {bot.config.name}
+                <BotAvatar avatar={bot.config.avatar} name={bot.config.name} seed={bot.id} />{" "}
+                {bot.config.name}
                 {bot.archived ? " · archived" : ""}
               </SelectItem>
             ))}

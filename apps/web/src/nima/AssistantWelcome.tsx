@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { BotAvatar } from "./BotAvatar";
 import { History, Image, Inbox, Plus } from "lucide-react";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { usePersonalAssistant } from "./usePersonalAssistant";
@@ -17,7 +18,7 @@ export function AssistantWelcome() {
   return (
     <div className={styles.welcome}>
       <span className={styles.avatar} role="img" aria-label={name}>
-        {avatar}
+        <BotAvatar avatar={avatar} name={name} fill />
       </span>
       <h1>What are we working on?</h1>
       <p>Ask, create, plan, or hand something off to Bara.</p>
@@ -34,7 +35,7 @@ export function AssistantFocusEmpty() {
   return (
     <div className={styles.focusEmpty}>
       <span className={styles.avatar} aria-hidden="true">
-        {avatar}
+        <BotAvatar avatar={avatar} name={name} fill />
       </span>
       <p>{name}</p>
       <small>

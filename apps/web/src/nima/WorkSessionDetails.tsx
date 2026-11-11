@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { BotAvatar } from "./BotAvatar";
 import { Link } from "@tanstack/react-router";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
@@ -67,7 +68,12 @@ export function WorkSessionHeader({ threadRef }: { threadRef: ScopedThreadRef })
             }
             className="truncate hover:text-foreground"
           >
-            {coordinator.config.avatar} {coordinator.config.name}
+            <BotAvatar
+              avatar={coordinator.config.avatar}
+              name={coordinator.config.name}
+              seed={coordinator.id}
+            />{" "}
+            {coordinator.config.name}
             {coordinator.archived ? " · archived" : ""}
           </Link>
         ) : (

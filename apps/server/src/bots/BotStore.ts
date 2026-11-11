@@ -492,7 +492,7 @@ const make = Effect.gen(function* () {
         return yield* new BotError({ reason: "invalid" });
       const config = {
         name: input.name.trim(),
-        avatar: "",
+        avatar: input.avatar ?? "",
         instructions: "",
         timezone: "UTC",
         reasoning: "xhigh" as const,

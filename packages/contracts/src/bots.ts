@@ -104,12 +104,12 @@ export const BotCreateInput = Schema.Struct({
   id: BotId,
   name: BotConfiguration.fields.name,
   description: BotConfiguration.fields.description,
+  avatar: Schema.optional(BotConfiguration.fields.avatar),
 });
 export type BotCreateInput = typeof BotCreateInput.Type;
 export const BotAssistantCreateInput = Schema.Struct({
   ...BotCreateInput.fields,
   instructions: Schema.optional(BotConfiguration.fields.instructions),
-  avatar: Schema.optional(BotConfiguration.fields.avatar),
 });
 export type BotAssistantCreateInput = typeof BotAssistantCreateInput.Type;
 export const BotAssistantUpdateInput = Schema.Struct({

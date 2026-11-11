@@ -1,0 +1,181 @@
+/* Anchored by its bottom-right corner, which you can drag anywhere on screen. */
+.dock {
+  position: fixed;
+  right: max(var(--assistant-right, 20px), env(safe-area-inset-right));
+  bottom: max(var(--assistant-bottom, 20px), env(safe-area-inset-bottom));
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  pointer-events: none;
+}
+.dock[data-dragging] {
+  user-select: none;
+}
+.dock[data-dragging] .panel,
+.dock[data-dragging] .launcher {
+  box-shadow: 0 28px 72px -24px color-mix(in srgb, var(--nima-ink) 60%, transparent);
+}
+.dock > * {
+  pointer-events: auto;
+}
+.launcher {
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 18px 0 6px;
+  border: 1px solid var(--nima-line);
+  border-radius: 999px;
+  background: var(--nima-canvas);
+  color: var(--nima-sub);
+  font-size: 13px;
+  box-shadow: 0 12px 32px -14px color-mix(in srgb, var(--nima-ink) 45%, transparent);
+  transition:
+    color 150ms,
+    border-color 150ms,
+    transform 200ms cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+.launcher:hover {
+  color: var(--nima-ink);
+  border-color: color-mix(in srgb, var(--nima-accent) 40%, var(--nima-line));
+}
+.launcher:focus-visible,
+.panel header button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.face {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 19px;
+  background: color-mix(in srgb, var(--nima-accent) 14%, var(--nima-canvas));
+}
+.dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--nima-canvas);
+  background: var(--bara-state-working, #0b84fe);
+}
+.prompt {
+  white-space: nowrap;
+}
+.panel {
+  display: flex;
+  flex-direction: column;
+  width: min(420px, calc(100vw - 16px));
+  height: min(640px, calc(100dvh - var(--workspace-topbar-height, 52px) - 16px));
+  overflow: hidden;
+  border: 1px solid var(--nima-line);
+  border-radius: 20px;
+  background: var(--background);
+  box-shadow: 0 24px 64px -24px color-mix(in srgb, var(--nima-ink) 55%, transparent);
+  transform-origin: bottom right;
+}
+.panel header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  height: 52px;
+  padding: 0 8px 0 10px;
+  border-bottom: 1px solid var(--nima-line);
+  cursor: grab;
+  touch-action: none;
+}
+.dock[data-dragging] .panel header {
+  cursor: grabbing;
+}
+.panel header .face {
+  width: 30px;
+  height: 30px;
+  font-size: 16px;
+}
+.panel header strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--nima-ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.working {
+  font-size: 11px;
+  color: var(--bara-state-working, #0b84fe);
+}
+.panel header button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  color: var(--nima-sub);
+}
+.panel header button:hover {
+  background: var(--nima-side);
+  color: var(--nima-ink);
+}
+.body {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+.status {
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  margin: auto;
+  padding: 24px;
+  font-size: 13px;
+  color: var(--nima-muted);
+  text-align: center;
+}
+.status button {
+  font-weight: 500;
+  color: var(--nima-ink);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .panel {
+    animation: dock-open 220ms cubic-bezier(0.2, 0.9, 0.3, 1.1) both;
+  }
+  .launcher {
+    animation: dock-in 200ms ease-out both;
+  }
+  .launcher:hover {
+    transform: translateY(-1px);
+  }
+}
+@keyframes dock-open {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(8px);
+  }
+}
+@keyframes dock-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+@media (max-width: 640px) {
+  .launcher {
+    padding-right: 6px;
+  }
+  .prompt {
+    display: none;
+  }
+}

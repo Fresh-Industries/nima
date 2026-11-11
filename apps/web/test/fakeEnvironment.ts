@@ -24,6 +24,7 @@ import {
   type ProjectTeamsSnapshot,
   type ProjectTeamWriteInput,
   type BotProfile,
+  type PersonalAgentProfile,
   type BotToolApproval,
   type BotApprovalResolveInput,
   type WorkSessionCreateInput,
@@ -361,6 +362,14 @@ const subscribe = <A>(first: ReadonlyArray<A>, register?: (queue: Queue.Queue<A>
   );
 
 const handlers: Record<string, (input: never) => unknown> = {
+  [WS_METHODS.personalAgentSubscribe]: () => {
+    const profile = personalAgentFixture();
+    return profile ? subscribe([profile]) : Stream.never;
+  },
+  [WS_METHODS.personalAgentOpen]: () => {
+    const profile = personalAgentFixture();
+    return profile ? Effect.succeed(profile) : Effect.never;
+  },
   [WS_METHODS.projectsEnsureScratch]: () =>
     Effect.gen(function* () {
       scratchOpened = true;
@@ -720,6 +729,18 @@ const teamSubscribers = new Set<Queue.Queue<ProjectTeamsSnapshot>>();
 let approvalsFixture: ReadonlyArray<BotToolApproval> = [];
 let botsFixture: ReadonlyArray<BotProfile> | undefined;
 let botsSubscriber: Queue.Queue<BotsSnapshot> | null = null;
+function personalAgentFixture(): PersonalAgentProfile | null {
+  const home = botsFixture?.find((bot) => bot.home);
+  return home
+    ? {
+        id: "primary",
+        config: { ...home.config, personalMemoryTaskIds: [] },
+        threadId: home.threadId,
+        revision: home.revision,
+        updatedAt: home.updatedAt,
+      }
+    : null;
+}
 const reviewSubscribers = new Set<Queue.Queue<WorkspaceReviewSnapshot>>();
 const shellSubscribers = new Set<Queue.Queue<OrchestrationV2ShellStreamItem>>();
 const encodedDescriptor = Schema.encodeSync(ExecutionEnvironmentDescriptor)(
