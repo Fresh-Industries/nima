@@ -1,3 +1,4 @@
+import * as MeetingExperiment from "./meetings/MeetingExperiment.ts";
 import * as ProjectTeams from "./bots/ProjectTeams.ts";
 import * as WorkSessions from "./workspace/WorkSessions.ts";
 import * as BotStore from "./bots/BotStore.ts";
@@ -740,6 +741,7 @@ const layerUnusedConfigRpcServices = Layer.mergeAll(
   Layer.mock(WorkspaceFileSystem.WorkspaceFileSystem)({}),
   Layer.mock(WorkspaceReview.WorkspaceReview)({}),
   Layer.mock(WorkSessions.WorkSessions)({}),
+  Layer.mock(MeetingExperiment.MeetingExperiment)({}),
   Layer.mock(WorkspaceGoals.WorkspaceGoals)({}),
   Layer.mock(WorkspacePages.WorkspacePages)({}),
   Layer.mock(Studio.Studio)({}),

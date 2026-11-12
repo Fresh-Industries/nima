@@ -1,3 +1,4 @@
+import * as MeetingExperiment from "./meetings/MeetingExperiment.ts";
 import * as ProjectTeams from "./bots/ProjectTeams.ts";
 import * as WorkSessions from "./workspace/WorkSessions.ts";
 import * as BotStore from "./bots/BotStore.ts";
@@ -1367,6 +1368,7 @@ export const layerWsRpc = (
       const personalAgent = yield* PersonalAgent.PersonalAgent;
       const assistantConversation = yield* AssistantConversation.AssistantConversation;
       const workspaceNotes = yield* WorkspaceNotes.WorkspaceNotes;
+      const meetingExperiment = yield* MeetingExperiment.MeetingExperiment;
       const workSessions = yield* WorkSessions.WorkSessions;
       const workspaceReview = yield* WorkspaceReview.WorkspaceReview;
       const workspaceGoals = yield* WorkspaceGoals.WorkspaceGoals;
@@ -2283,6 +2285,8 @@ export const layerWsRpc = (
           scheduledTasks.subscribeList().pipe(Stream.map(withVisibleWebhookUrls)),
         [WS_METHODS.scheduledTasksUpsert]: (input) => scheduledTasks.upsert(input),
         [WS_METHODS.workspaceReviewSubscribe]: (input) => workspaceReview.subscribe(input),
+        [WS_METHODS.meetingExperiment]: (input) =>
+          meetingExperiment.command(currentSessionId, input),
         [WS_METHODS.workspaceWorkCreate]: (input) => workSessions.create(input),
         [WS_METHODS.workspaceReviewWrite]: (input) => workspaceReview.write(input),
         [WS_METHODS.scheduledTasksListRuns]: (input) => scheduledTasks.listRuns(input),

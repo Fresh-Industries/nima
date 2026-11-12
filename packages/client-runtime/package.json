@@ -518,6 +518,10 @@
     "./provider-clients": {
       "types": "./src/providerClients.ts",
       "default": "./src/providerClients.ts"
+    },
+    "./meetings": {
+      "types": "./src/meetings/controller.ts",
+      "default": "./src/meetings/controller.ts"
     }
   },
   "scripts": {

@@ -1,3 +1,8 @@
+import {
+  MeetingExperimentCommand,
+  MeetingExperimentResult,
+  MeetingExperimentError,
+} from "./meetingExperiment.ts";
 import { WorkSessionCreateInput, WorkSessionCreated, WorkSessionError } from "./workSessions.ts";
 import {
   BotReadInput,
@@ -642,6 +647,7 @@ export const WS_METHODS = {
 
   scheduledTasksSubscribe: "scheduledTasks.subscribe",
   workspaceReviewSubscribe: "workspaceReview.subscribe",
+  meetingExperiment: "meetingExperiment.command",
   workspaceWorkCreate: "workspaceWork.create",
   workspaceReviewWrite: "workspaceReview.write",
   scheduledTasksListRuns: "scheduledTasks.listRuns",
@@ -2171,6 +2177,11 @@ const WsWorkspaceReviewSubscribeRpc = Rpc.make(WS_METHODS.workspaceReviewSubscri
   error: Schema.Union([WorkspaceReviewError, EnvironmentAuthorizationError]),
   stream: true,
 });
+const WsMeetingExperimentRpc = Rpc.make(WS_METHODS.meetingExperiment, {
+  payload: MeetingExperimentCommand,
+  success: MeetingExperimentResult,
+  error: Schema.Union([MeetingExperimentError, EnvironmentAuthorizationError]),
+});
 const WsWorkspaceWorkCreateRpc = Rpc.make(WS_METHODS.workspaceWorkCreate, {
   payload: WorkSessionCreateInput,
   success: WorkSessionCreated,
@@ -2359,6 +2370,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsScheduledTasksSubscribeRpc,
   WsWorkspaceReviewSubscribeRpc,
   WsWorkspaceReviewWriteRpc,
+  WsMeetingExperimentRpc,
   WsWorkspaceWorkCreateRpc,
   WsScheduledTasksListRunsRpc,
   WsScheduledTasksUpsertRpc,

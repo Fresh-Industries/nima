@@ -1,3 +1,5 @@
+import * as MeetingExperiment from "./meetings/MeetingExperiment.ts";
+import * as LiveVoice from "./meetings/LiveVoice.ts";
 import * as ProjectTeams from "./bots/ProjectTeams.ts";
 import * as BotDelegation from "./bots/BotDelegation.ts";
 import * as BotExecution from "./bots/BotExecution.ts";
@@ -690,6 +692,7 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
     Layer.mergeAll(
       AssistantConversation.layer,
       WorkSessions.layer,
+      MeetingExperiment.layer.pipe(Layer.provide(LiveVoice.layer)),
       ProjectTeams.layer,
       BotDelegation.layer,
     ),

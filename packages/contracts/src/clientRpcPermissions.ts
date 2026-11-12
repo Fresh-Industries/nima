@@ -72,6 +72,7 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   // Starts an agent session on this environment that can read its logs and database.
   [WS_METHODS.serverPrepareTriage]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksUpsert]: AuthOrchestrationOperateScope,
+  [WS_METHODS.meetingExperiment]: AuthOrchestrationOperateScope,
   [WS_METHODS.workspaceWorkCreate]: AuthOrchestrationOperateScope,
   [WS_METHODS.workspaceReviewWrite]: AuthOrchestrationOperateScope,
   [WS_METHODS.scheduledTasksSetEnabled]: AuthOrchestrationOperateScope,
@@ -97,6 +98,8 @@ export function clientRpcRequiredScopes(
   method: string,
   input: unknown,
 ): readonly AuthEnvironmentScope[] {
+  if (method === WS_METHODS.meetingExperiment)
+    return [AuthOrchestrationOperateScope, AuthOrchestrationReadScope];
   if (method === WS_METHODS.personalAgentOpen)
     return [AuthOrchestrationOperateScope, AuthSettingsWriteScope];
   if (method === WS_METHODS.studioMutate || method === WS_METHODS.studioExport)

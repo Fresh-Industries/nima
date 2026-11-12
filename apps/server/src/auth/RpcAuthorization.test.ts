@@ -61,6 +61,9 @@ describe("RPC authorization scopes", () => {
     expect(requiredScopeForRpcMethod(WS_METHODS.workspaceReviewSubscribe)).toBe(
       AuthOrchestrationReadScope,
     );
+    expect(requiredScopeForRpcMethod(WS_METHODS.meetingExperiment)).toBe(
+      AuthOrchestrationOperateScope,
+    );
     expect(requiredScopeForRpcMethod(WS_METHODS.workspaceWorkCreate)).toBe(
       AuthOrchestrationOperateScope,
     );
@@ -233,6 +236,45 @@ it.effect.each([
       expect(handled).toBe(1);
     }
   }).pipe(Effect.scoped),
+);
+
+it.effect.each([
+  { scopes: [AuthOrchestrationOperateScope], missing: AuthOrchestrationReadScope },
+  { scopes: [AuthOrchestrationReadScope], missing: AuthOrchestrationOperateScope },
+])(
+  "requires meeting read and operate grants before reaching the handler: $missing",
+  ({ scopes, missing }) =>
+    Effect.gen(function* () {
+      const group = WsRpcGroup.omit(
+        ...[...WsRpcGroup.requests.keys()].filter(
+          (
+            tag,
+          ): tag is Exclude<
+            keyof typeof RPC_REQUIRED_SCOPES,
+            typeof WS_METHODS.meetingExperiment
+          > => tag !== WS_METHODS.meetingExperiment,
+        ),
+      );
+      let handled = false;
+      const client = yield* RpcTest.makeClient(group).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            group.toLayerHandler(WS_METHODS.meetingExperiment, () =>
+              Effect.sync(() => {
+                handled = true;
+              }).pipe(Effect.andThen(Effect.never)),
+            ),
+            RpcAuthorization.layer(scopes),
+          ),
+        ),
+      );
+      expect(
+        yield* client[WS_METHODS.meetingExperiment]({ action: "inspect", id: "meeting" }).pipe(
+          Effect.flip,
+        ),
+      ).toMatchObject({ requiredPermission: missing });
+      expect(handled).toBe(false);
+    }).pipe(Effect.scoped),
 );
 
 describe("settings mutation authorization", () => {
