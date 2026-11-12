@@ -15,7 +15,7 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
-function fixture() {
+function fixture(activationName = "Citrus") {
   const commands: MeetingExperimentCommand[] = [];
   const device: MeetingDevice = {
     offer: vi.fn(async () => "offer"),
@@ -37,7 +37,7 @@ function fixture() {
     interrupted: false,
     createdAt: "2026-11-12T00:00:00.000Z",
     endedAt: null,
-    activationName: "Citrus",
+    activationName,
     summary: "",
     summaryPageId: null,
     requests: [],
@@ -234,4 +234,13 @@ it("closes a session that finishes connecting after the participant cancels", as
   await starting;
   expect(f.device.accept).not.toHaveBeenCalled();
   expect(f.commands.at(-1)?.action).toBe("close");
+});
+
+it("uses the server's activation name when local settings were stale at startup", async () => {
+  using f = fixture("Pucko");
+  await f.start();
+  f.speech("old-name", "Citrus, can you hear me?");
+  expect(f.device.setPlayback).not.toHaveBeenCalledWith(true);
+  f.speech("actual-name", "Pucko, can you hear me?", 2000, 2400);
+  expect(f.device.setPlayback).toHaveBeenCalledWith(true);
 });

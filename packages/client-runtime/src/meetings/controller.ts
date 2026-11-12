@@ -92,7 +92,7 @@ export class MeetingController {
   private readonly command: (input: MeetingExperimentCommand) => Promise<MeetingExperimentResult>;
   private readonly changed: (state: MeetingState) => void;
   private readonly newId: () => string;
-  private readonly activationName: string;
+  private activationName: string;
   constructor(
     id: string,
     device: MeetingDevice,
@@ -176,6 +176,7 @@ export class MeetingController {
         sdp,
         ...scope,
       });
+      this.activationName = result.activationName;
       this.started = true;
       if (this.abort.signal.aborted) {
         await this.command({ action: "close", id: this.id });
