@@ -1336,6 +1336,11 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:workspace-review:live",
       tag: WS_METHODS.workspaceReviewSubscribe,
     }),
+    meetingExperiment: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:meeting-experiment",
+      tag: WS_METHODS.meetingExperiment,
+      concurrency: { mode: "serial", key: ({ environmentId }) => environmentId },
+    }),
     createWorkSession: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:work:create",
       tag: WS_METHODS.workspaceWorkCreate,

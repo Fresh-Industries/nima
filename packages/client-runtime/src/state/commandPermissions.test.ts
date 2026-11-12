@@ -187,6 +187,7 @@ describe("command permissions", () => {
           const registry = yield* setup;
           for (const [method, scope] of [
             [WS_METHODS.workspacePagesCapture, AuthOrchestrationReadScope],
+            [WS_METHODS.meetingExperiment, AuthOrchestrationReadScope],
             [WS_METHODS.studioMutate, AuthFilesystemReadScope],
             [WS_METHODS.studioExport, AuthFilesystemReadScope],
             [WS_METHODS.personalAgentOpen, AuthSettingsWriteScope],

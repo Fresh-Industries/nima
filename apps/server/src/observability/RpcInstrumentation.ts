@@ -120,6 +120,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.workspaceNotesSubscribe]: "workspaceNotes",
   [WS_METHODS.scheduledTasksSubscribe]: "scheduledTasks",
   [WS_METHODS.workspaceReviewSubscribe]: "workspaceReview",
+  [WS_METHODS.meetingExperiment]: "meetings",
   [WS_METHODS.workspaceWorkCreate]: "workspaceReview",
   [WS_METHODS.workspaceReviewWrite]: "workspaceReview",
   [WS_METHODS.scheduledTasksListRuns]: "scheduledTasks",
