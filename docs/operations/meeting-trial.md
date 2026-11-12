@@ -13,6 +13,24 @@ does not provide that API access. Keep the key out of chat and source control.
 For isolated development, use `vp run dev --home-dir /workspace/scratch/bara-meeting-trial --no-seed`.
 The server data directory must be outside a Git checkout for personal Work.
 
+For the installed Windows app's local server, fully quit Bara, then run this in
+PowerShell. The prompt hides the key; the settings persist in your Windows user
+environment. Launch from this terminal so the new process receives them immediately:
+
+```powershell
+$env:OPENAI_API_KEY = [System.Net.NetworkCredential]::new('', (Read-Host 'OpenAI API key' -AsSecureString)).Password
+$env:BARA_MEETING_EXPERIMENT = 'true'
+[Environment]::SetEnvironmentVariable('OPENAI_API_KEY', $env:OPENAI_API_KEY, 'User')
+[Environment]::SetEnvironmentVariable('BARA_MEETING_EXPERIMENT', 'true', 'User')
+Start-Process "$env:LOCALAPPDATA\Programs\Bara\Bara.exe"
+```
+
+Use your installed `Bara.exe` path if you changed the installation directory.
+A remote Work session needs these settings on its remote server instead. A
+development checkout's `.env.local` does not configure the installed app.
+To disable the trial, set `BARA_MEETING_EXPERIMENT=false` in that server's
+environment and fully restart it.
+
 In desktop Bara, create a **new, empty local Work session**. Choose an existing
 coordinator, project or Personal Work, and the working model/access level using
 the usual controls. Open **Meeting trial** in its header. The trial is also
