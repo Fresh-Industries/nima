@@ -1190,7 +1190,17 @@ function OpenCommandPaletteDialog(props: {
     if (firstOption) startNewProject(firstOption.environmentId, null);
   };
 
-  const actionItems: Array<CommandPaletteActionItem | CommandPaletteSubmenuItem> = [];
+  const actionItems: Array<CommandPaletteActionItem | CommandPaletteSubmenuItem> = [
+    {
+      kind: "action",
+      value: "action:open-pucko",
+      title: "Open Pucko",
+      searchTitle: "Open Pucko",
+      icon: <MessageSquareIcon />,
+      searchTerms: ["pucko", "meeting", "citrus", "voice", "companion"],
+      run: () => navigate({ to: "/pucko" }),
+    },
+  ];
 
   if (projects.length > 0) {
     const activeProjectTitle =

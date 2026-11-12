@@ -127,6 +127,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.workspaceNotesRead]: AuthFilesystemReadScope,
   [WS_METHODS.workspaceNotesSubscribe]: AuthFilesystemReadScope,
   [WS_METHODS.scheduledTasksSubscribe]: AuthOrchestrationReadScope,
+  [WS_METHODS.puckoSubscribe]: AuthOrchestrationReadScope,
   [WS_METHODS.workspaceReviewSubscribe]: AuthOrchestrationReadScope,
   [WS_METHODS.scheduledTasksListRuns]: AuthOrchestrationReadScope,
   [WS_METHODS.secretsAnswerRequest]: AuthOrchestrationOperateScope,

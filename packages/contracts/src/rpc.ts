@@ -1,4 +1,7 @@
 import {
+  PuckoConfigureInput,
+  PuckoConfiguration,
+  PuckoSnapshot,
   MeetingExperimentCommand,
   MeetingExperimentResult,
   MeetingExperimentError,
@@ -648,6 +651,8 @@ export const WS_METHODS = {
   scheduledTasksSubscribe: "scheduledTasks.subscribe",
   workspaceReviewSubscribe: "workspaceReview.subscribe",
   meetingExperiment: "meetingExperiment.command",
+  puckoSubscribe: "pucko.subscribe",
+  puckoConfigure: "pucko.configure",
   workspaceWorkCreate: "workspaceWork.create",
   workspaceReviewWrite: "workspaceReview.write",
   scheduledTasksListRuns: "scheduledTasks.listRuns",
@@ -2177,6 +2182,17 @@ const WsWorkspaceReviewSubscribeRpc = Rpc.make(WS_METHODS.workspaceReviewSubscri
   error: Schema.Union([WorkspaceReviewError, EnvironmentAuthorizationError]),
   stream: true,
 });
+const WsPuckoSubscribeRpc = Rpc.make(WS_METHODS.puckoSubscribe, {
+  payload: Schema.Struct({}),
+  success: PuckoSnapshot,
+  error: Schema.Union([MeetingExperimentError, EnvironmentAuthorizationError]),
+  stream: true,
+});
+const WsPuckoConfigureRpc = Rpc.make(WS_METHODS.puckoConfigure, {
+  payload: PuckoConfigureInput,
+  success: PuckoConfiguration,
+  error: Schema.Union([MeetingExperimentError, EnvironmentAuthorizationError]),
+});
 const WsMeetingExperimentRpc = Rpc.make(WS_METHODS.meetingExperiment, {
   payload: MeetingExperimentCommand,
   success: MeetingExperimentResult,
@@ -2371,6 +2387,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsWorkspaceReviewSubscribeRpc,
   WsWorkspaceReviewWriteRpc,
   WsMeetingExperimentRpc,
+  WsPuckoSubscribeRpc,
+  WsPuckoConfigureRpc,
   WsWorkspaceWorkCreateRpc,
   WsScheduledTasksListRunsRpc,
   WsScheduledTasksUpsertRpc,

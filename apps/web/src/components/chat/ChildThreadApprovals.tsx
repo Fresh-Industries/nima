@@ -12,7 +12,7 @@ import { childThreadApprovalsAtom, threadEnvironment } from "../../state/threads
 import { useAtomCommand } from "../../state/use-atom-command";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 
-function ChildApproval({ entry }: { entry: ChildThreadApproval }) {
+export function ThreadApproval({ entry }: { entry: ChildThreadApproval }) {
   const canRespond = useEnvironmentScope(entry.thread.environmentId, AuthOrchestrationOperateScope);
   const respond = useAtomCommand(threadEnvironment.respondToApproval, { reportFailure: false });
   const [responding, setResponding] = useState(false);
@@ -81,7 +81,7 @@ export function ChildThreadApprovals({ threadRef }: { threadRef: ScopedThreadRef
   return (
     <div className="mb-2 flex max-h-80 flex-col gap-2 overflow-auto">
       {approvals.map((entry) => (
-        <ChildApproval
+        <ThreadApproval
           key={JSON.stringify([
             entry.thread.environmentId,
             entry.thread.threadId,

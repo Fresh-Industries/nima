@@ -13,9 +13,16 @@ import {
   Settings,
   Shapes,
   Target,
-  type LucideIcon,
 } from "lucide-react";
-import { Fragment, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
+import {
+  Fragment,
+  useEffect,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+  type ComponentType,
+} from "react";
 import { renderClosingPositioner } from "../components/ui/closing-positioner";
 import { useLiveActivity } from "./studio/liveActivity";
 import { isRichTextBoldShortcut } from "../keybindings";
@@ -33,13 +40,37 @@ type ItemProps = {
   children: ReactNode;
 };
 
+function PuckoIcon({ size = 20 }: { size?: number; strokeWidth?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      aria-hidden
+    >
+      <path d="M7 8v3m10-3v3m-8 5q3 3 6 0" strokeLinecap="round" />
+      <rect x="2" y="3" width="20" height="18" rx="7" />
+    </svg>
+  );
+}
+
 const TOOLS: readonly {
   id: string;
   label: string;
-  icon: LucideIcon;
+  icon: ComponentType<{ size?: number; strokeWidth?: number }>;
   link: (props: ItemProps) => ReactElement;
   matches: (pathname: string, area: string | undefined) => boolean;
 }[] = [
+  {
+    id: "pucko",
+    label: "Pucko",
+    icon: PuckoIcon,
+    link: (props) => <Link to="/pucko" {...props} />,
+    matches: (path) => path === "/pucko",
+  },
   {
     id: "desk",
     label: "Desk",
@@ -104,14 +135,21 @@ const TOOLS: readonly {
     matches: (path) => path.startsWith("/settings"),
   },
 ];
-const DEFAULT_PINNED = ["desk", "studio", "live", "library"];
+const DEFAULT_PINNED = ["pucko", "desk", "studio", "live", "library"];
 const PINNED_KEY = "bara.dock.pinned";
 const HIDE_DELAY_MS = 380;
 
 function readPinned(): string[] {
   try {
     const saved = JSON.parse(localStorage.getItem(PINNED_KEY) ?? "null") as unknown;
-    if (Array.isArray(saved) && saved.every((id) => typeof id === "string")) return saved;
+    if (Array.isArray(saved) && saved.every((id) => typeof id === "string")) {
+      if (localStorage.getItem("bara.dock.pucko-added") === "1") return saved;
+      const next = saved.includes("pucko") ? saved : ["pucko", ...saved];
+      localStorage.setItem(PINNED_KEY, JSON.stringify(next));
+      localStorage.setItem("bara.dock.pucko-added", "1");
+      return next;
+    }
+    localStorage.setItem("bara.dock.pucko-added", "1");
   } catch {
     // Storage can be unavailable; the default tools still show.
   }

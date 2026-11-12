@@ -1336,6 +1336,14 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:workspace-review:live",
       tag: WS_METHODS.workspaceReviewSubscribe,
     }),
+    puckoLive: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
+      label: "environment-data:pucko:live",
+      tag: WS_METHODS.puckoSubscribe,
+    }),
+    configurePucko: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:pucko:configure",
+      tag: WS_METHODS.puckoConfigure,
+    }),
     meetingExperiment: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:meeting-experiment",
       tag: WS_METHODS.meetingExperiment,

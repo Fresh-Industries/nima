@@ -1,3 +1,4 @@
+import { PuckoProvider } from "./pucko/PuckoProvider";
 import { WorkSessionContext } from "./workSessionContext";
 import { WorkSessionHeader } from "./WorkSessionDetails";
 import { usePageAutosave } from "./pageWrites";
@@ -139,215 +140,223 @@ export function BaraFrame({ children }: { children: ReactNode }) {
   };
   const title = nativeOpen ? (nativeTool ?? "Work tools") : surface;
   return (
-    <CompanionPanelContext value={{ host, nativeVisible: nativeOpen && shown && !modal }}>
-      <div
-        ref={frameRef}
-        className={styles["nima-frame"]}
-        data-bara-workspace
-        data-nima-daily={isAssistant || undefined}
-        data-bara-chat={
-          (ref && (isAssistant || Boolean(activeBot) || workSessionConversation)) || undefined
-        }
-      >
-        <div className={styles["nima-center"]}>
-          <div className={`${styles["nima-topbar"]} ${isElectron ? "drag-region" : ""}`}>
-            <BaraTopBar inboxWaiting={inboxWaiting} needsYou={needsYou}>
-              <button
-                ref={toggleRef}
-                aria-label="Toggle contextual panel"
-                aria-expanded={shown && !modal}
-                onClick={() => (shown ? close() : choose(surface))}
-              >
-                <PanelRight size={17} />
-              </button>
-            </BaraTopBar>
-          </div>
-          {activeBot && !activeBot.home && ref && (
-            <div className="flex items-center gap-5 border-b border-border/50 px-5 py-2 text-xs text-muted-foreground">
-              <Link to="/bots">← Bots</Link>
-              <span className="min-w-0 flex-1 truncate">{activeBot.config.description}</span>
-              <Link
-                to="/bots"
-                search={{ botId: activeBot.id, environmentId: ref.environmentId, settings: true }}
-              >
-                Bot settings
-              </Link>
-              <Link to="/work" search={{ environmentId: ref.environmentId, botId: activeBot.id }}>
-                Work
-              </Link>
-              <Link
-                to="/bots"
-                search={{ environmentId: ref.environmentId, botId: activeBot.id, view: "routines" }}
-              >
-                Routines
-              </Link>
-            </div>
-          )}
-          {ref && !activeBot && !isAssistant && (
-            <WorkSessionHeader key={scopedThreadKey(ref)} threadRef={ref} />
-          )}
-          <div className={styles["nima-content"]} inert={maximized && shown && !modal}>
-            <div className={studioPage ? "hidden" : "contents"}>
-              <BotConversationContext value={activeBot ?? null}>
-                <WorkSessionContext value={workSessionConversation}>
-                  <PersonalChatContext value={isAssistant}>{children}</PersonalChatContext>
-                </WorkSessionContext>
-              </BotConversationContext>
-            </div>
-            {studioPage && !studioEnvironment && (
-              <p className="m-auto p-8 text-sm text-muted-foreground">
-                Connect to your Bara server to open Studio.
-              </p>
-            )}
-            <div
-              ref={setMainStudioHost}
-              className={studioPage ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}
-            />
-          </div>
-        </div>
-        {!modal && <BaraDock />}
-        <FloatingAssistant hidden={isAssistant || modal} />
-        <aside
-          className={`${styles["bara-companion"]} ${!shown || modal ? styles["bara-hidden"] : ""} ${maximized ? styles["bara-companion-expanded"] : ""}`}
-          style={{ width }}
-          data-studio-surface={studioSurface || undefined}
-          aria-label="Companion panel"
-          inert={!shown || modal}
+    <PuckoProvider>
+      <CompanionPanelContext value={{ host, nativeVisible: nativeOpen && shown && !modal }}>
+        <div
+          ref={frameRef}
+          className={styles["nima-frame"]}
+          data-bara-workspace
+          data-nima-daily={isAssistant || undefined}
+          data-bara-chat={
+            (ref && (isAssistant || Boolean(activeBot) || workSessionConversation)) || undefined
+          }
         >
-          {!maximized && (
-            <div
-              className={styles["nima-resize"]}
-              role="separator"
-              aria-label="Resize contextual panel"
-              aria-orientation="vertical"
-              aria-valuemin={Math.min(280, frameWidth || 280)}
-              aria-valuemax={frameWidth || width}
-              aria-valuenow={Math.min(width, frameWidth || width)}
-              tabIndex={0}
-              onKeyDown={(event) => {
-                if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-                  event.preventDefault();
-                  const resize = studioSurface
-                    ? useNimaStore.getState().setStudioWidth
-                    : useNimaStore.getState().setUtilityWidth;
-                  resize(
-                    Math.min(
-                      frameWidth,
-                      Math.min(width, frameWidth) + (event.key === "ArrowLeft" ? 20 : -20),
-                    ),
-                  );
-                }
-              }}
-              onPointerDown={(event) => {
-                if (event.button !== 0) return;
-                event.preventDefault();
-                setResizing(true);
-                event.currentTarget.setPointerCapture(event.pointerId);
-              }}
-              onPointerMove={(event) => {
-                if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-                  const resize = studioSurface
-                    ? useNimaStore.getState().setStudioWidth
-                    : useNimaStore.getState().setUtilityWidth;
-                  const bounds = frameRef.current?.getBoundingClientRect();
-                  if (bounds) resize(Math.min(bounds.width, bounds.right - event.clientX));
-                }
-              }}
-              onPointerUp={(event) => {
-                if (event.currentTarget.hasPointerCapture(event.pointerId))
-                  event.currentTarget.releasePointerCapture(event.pointerId);
-                setResizing(false);
-              }}
-              onPointerCancel={() => setResizing(false)}
-              onLostPointerCapture={() => setResizing(false)}
-            />
-          )}
-          <CompanionPanelHeader
-            title={title}
-            selected={selected}
-            expanded={maximized}
-            onSelect={choose}
-            onClose={close}
-            onExpand={() => {
-              if (maximized && window.matchMedia("(max-width: 1100px)").matches) close();
-              else {
-                if (maximized) {
-                  const resize = studioSurface
-                    ? useNimaStore.getState().setStudioWidth
-                    : useNimaStore.getState().setUtilityWidth;
-                  resize(Math.min(width, Math.max(280, frameWidth - 360)));
-                }
-                useNimaStore.getState().expandSurface(!maximized);
-              }
-            }}
-          />
-          <div
-            ref={setHost}
-            id={nativeOpen ? "bara-companion-content" : undefined}
-            className={`${styles["bara-native-host"]} ${!nativeOpen ? styles["bara-hidden"] : ""}`}
-            role={nativeOpen ? "tabpanel" : undefined}
-            aria-label={nativeOpen ? title : undefined}
-            aria-labelledby={
-              nativeOpen && nativeTool ? `bara-tool-${nativeTool.toLowerCase()}` : undefined
-            }
-          />
-          <div
-            id={nativeOpen ? undefined : "bara-companion-content"}
-            className={`${styles["bara-surface-body"]} ${nativeOpen ? styles["bara-hidden"] : ""}`}
-            role={nativeOpen ? undefined : "tabpanel"}
-            aria-label={nativeOpen ? undefined : surface}
-            aria-labelledby={
-              nativeOpen ? undefined : `bara-tool-${surface.replaceAll(" ", "-").toLowerCase()}`
-            }
-          >
-            <WorkSurfaceContent
-              surface={surface}
-              studioHostRef={setDockStudioHost}
-              canOpenNative={ref !== null}
-              onOpenNative={native}
-            />
+          <div className={styles["nima-center"]}>
+            <div className={`${styles["nima-topbar"]} ${isElectron ? "drag-region" : ""}`}>
+              <BaraTopBar inboxWaiting={inboxWaiting} needsYou={needsYou}>
+                <button
+                  ref={toggleRef}
+                  aria-label="Toggle contextual panel"
+                  aria-expanded={shown && !modal}
+                  onClick={() => (shown ? close() : choose(surface))}
+                >
+                  <PanelRight size={17} />
+                </button>
+              </BaraTopBar>
+            </div>
+            {activeBot && !activeBot.home && ref && (
+              <div className="flex items-center gap-5 border-b border-border/50 px-5 py-2 text-xs text-muted-foreground">
+                <Link to="/bots">← Bots</Link>
+                <span className="min-w-0 flex-1 truncate">{activeBot.config.description}</span>
+                <Link
+                  to="/bots"
+                  search={{ botId: activeBot.id, environmentId: ref.environmentId, settings: true }}
+                >
+                  Bot settings
+                </Link>
+                <Link to="/work" search={{ environmentId: ref.environmentId, botId: activeBot.id }}>
+                  Work
+                </Link>
+                <Link
+                  to="/bots"
+                  search={{
+                    environmentId: ref.environmentId,
+                    botId: activeBot.id,
+                    view: "routines",
+                  }}
+                >
+                  Routines
+                </Link>
+              </div>
+            )}
+            {ref && !activeBot && !isAssistant && (
+              <WorkSessionHeader key={scopedThreadKey(ref)} threadRef={ref} />
+            )}
+            <div className={styles["nima-content"]} inert={maximized && shown && !modal}>
+              <div className={studioPage ? "hidden" : "contents"}>
+                <BotConversationContext value={activeBot ?? null}>
+                  <WorkSessionContext value={workSessionConversation}>
+                    <PersonalChatContext value={isAssistant}>{children}</PersonalChatContext>
+                  </WorkSessionContext>
+                </BotConversationContext>
+              </div>
+              {studioPage && !studioEnvironment && (
+                <p className="m-auto p-8 text-sm text-muted-foreground">
+                  Connect to your Bara server to open Studio.
+                </p>
+              )}
+              <div
+                ref={setMainStudioHost}
+                className={studioPage ? "flex min-h-0 min-w-0 flex-1 flex-col" : "hidden"}
+              />
+            </div>
           </div>
-        </aside>
-        <div ref={setParkedStudioHost} className="hidden" inert aria-hidden="true" />
-        {studioHosts.map((environmentId) => {
-          const active = environmentId === studioEnvironment;
-          const docked = !studioPage && active && studioSurface && shown && !nativeOpen && !modal;
-          return (
-            <StudioWorkspace
-              key={environmentId}
-              environmentId={environmentId}
-              target={
-                active && studioPage && !modal
-                  ? mainStudioHost
-                  : docked
-                    ? dockStudioHost
-                    : parkedStudioHost
+          {!modal && <BaraDock />}
+          <FloatingAssistant hidden={isAssistant || modal} />
+          <aside
+            className={`${styles["bara-companion"]} ${!shown || modal ? styles["bara-hidden"] : ""} ${maximized ? styles["bara-companion-expanded"] : ""}`}
+            style={{ width }}
+            data-studio-surface={studioSurface || undefined}
+            aria-label="Companion panel"
+            inert={!shown || modal}
+          >
+            {!maximized && (
+              <div
+                className={styles["nima-resize"]}
+                role="separator"
+                aria-label="Resize contextual panel"
+                aria-orientation="vertical"
+                aria-valuemin={Math.min(280, frameWidth || 280)}
+                aria-valuemax={frameWidth || width}
+                aria-valuenow={Math.min(width, frameWidth || width)}
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                    event.preventDefault();
+                    const resize = studioSurface
+                      ? useNimaStore.getState().setStudioWidth
+                      : useNimaStore.getState().setUtilityWidth;
+                    resize(
+                      Math.min(
+                        frameWidth,
+                        Math.min(width, frameWidth) + (event.key === "ArrowLeft" ? 20 : -20),
+                      ),
+                    );
+                  }
+                }}
+                onPointerDown={(event) => {
+                  if (event.button !== 0) return;
+                  event.preventDefault();
+                  setResizing(true);
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                }}
+                onPointerMove={(event) => {
+                  if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                    const resize = studioSurface
+                      ? useNimaStore.getState().setStudioWidth
+                      : useNimaStore.getState().setUtilityWidth;
+                    const bounds = frameRef.current?.getBoundingClientRect();
+                    if (bounds) resize(Math.min(bounds.width, bounds.right - event.clientX));
+                  }
+                }}
+                onPointerUp={(event) => {
+                  if (event.currentTarget.hasPointerCapture(event.pointerId))
+                    event.currentTarget.releasePointerCapture(event.pointerId);
+                  setResizing(false);
+                }}
+                onPointerCancel={() => setResizing(false)}
+                onLostPointerCapture={() => setResizing(false)}
+              />
+            )}
+            <CompanionPanelHeader
+              title={title}
+              selected={selected}
+              expanded={maximized}
+              onSelect={choose}
+              onClose={close}
+              onExpand={() => {
+                if (maximized && window.matchMedia("(max-width: 1100px)").matches) close();
+                else {
+                  if (maximized) {
+                    const resize = studioSurface
+                      ? useNimaStore.getState().setStudioWidth
+                      : useNimaStore.getState().setUtilityWidth;
+                    resize(Math.min(width, Math.max(280, frameWidth - 360)));
+                  }
+                  useNimaStore.getState().expandSurface(!maximized);
+                }
+              }}
+            />
+            <div
+              ref={setHost}
+              id={nativeOpen ? "bara-companion-content" : undefined}
+              className={`${styles["bara-native-host"]} ${!nativeOpen ? styles["bara-hidden"] : ""}`}
+              role={nativeOpen ? "tabpanel" : undefined}
+              aria-label={nativeOpen ? title : undefined}
+              aria-labelledby={
+                nativeOpen && nativeTool ? `bara-tool-${nativeTool.toLowerCase()}` : undefined
               }
-              active={active}
-              area={studioArea}
-              {...(studioId ? { id: studioId } : {})}
-              docked={docked}
-              onOpen={(area, id) => {
-                if (studioPage)
-                  void navigate({
-                    to: "/studio",
-                    search: { environmentId, area, ...(id ? { id } : {}) },
-                  });
-                else
+            />
+            <div
+              id={nativeOpen ? undefined : "bara-companion-content"}
+              className={`${styles["bara-surface-body"]} ${nativeOpen ? styles["bara-hidden"] : ""}`}
+              role={nativeOpen ? undefined : "tabpanel"}
+              aria-label={nativeOpen ? undefined : surface}
+              aria-labelledby={
+                nativeOpen ? undefined : `bara-tool-${surface.replaceAll(" ", "-").toLowerCase()}`
+              }
+            >
+              <WorkSurfaceContent
+                surface={surface}
+                studioHostRef={setDockStudioHost}
+                canOpenNative={ref !== null}
+                onOpenNative={native}
+              />
+            </div>
+          </aside>
+          <div ref={setParkedStudioHost} className="hidden" inert aria-hidden="true" />
+          {studioHosts.map((environmentId) => {
+            const active = environmentId === studioEnvironment;
+            const docked = !studioPage && active && studioSurface && shown && !nativeOpen && !modal;
+            return (
+              <StudioWorkspace
+                key={environmentId}
+                environmentId={environmentId}
+                target={
+                  active && studioPage && !modal
+                    ? mainStudioHost
+                    : docked
+                      ? dockStudioHost
+                      : parkedStudioHost
+                }
+                active={active}
+                area={studioArea}
+                {...(studioId ? { id: studioId } : {})}
+                docked={docked}
+                onOpen={(area, id) => {
+                  if (studioPage)
+                    void navigate({
+                      to: "/studio",
+                      search: { environmentId, area, ...(id ? { id } : {}) },
+                    });
+                  else
+                    useNimaStore
+                      .getState()
+                      .openStudio({ environmentId, area, ...(id ? { id } : {}) });
+                }}
+                onDock={(area, id) => {
+                  closeNative();
+                  useNimaStore.getState().expandSurface(false);
                   useNimaStore
                     .getState()
                     .openStudio({ environmentId, area, ...(id ? { id } : {}) });
-              }}
-              onDock={(area, id) => {
-                closeNative();
-                useNimaStore.getState().expandSurface(false);
-                useNimaStore.getState().openStudio({ environmentId, area, ...(id ? { id } : {}) });
-                void navigate({ to: "/" });
-              }}
-            />
-          );
-        })}
-      </div>
-    </CompanionPanelContext>
+                  void navigate({ to: "/" });
+                }}
+              />
+            );
+          })}
+        </div>
+      </CompanionPanelContext>
+    </PuckoProvider>
   );
 }

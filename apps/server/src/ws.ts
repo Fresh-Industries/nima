@@ -2285,6 +2285,8 @@ export const layerWsRpc = (
           scheduledTasks.subscribeList().pipe(Stream.map(withVisibleWebhookUrls)),
         [WS_METHODS.scheduledTasksUpsert]: (input) => scheduledTasks.upsert(input),
         [WS_METHODS.workspaceReviewSubscribe]: (input) => workspaceReview.subscribe(input),
+        [WS_METHODS.puckoSubscribe]: () => meetingExperiment.subscribe(currentSessionId),
+        [WS_METHODS.puckoConfigure]: (input) => meetingExperiment.configure(input),
         [WS_METHODS.meetingExperiment]: (input) =>
           meetingExperiment.command(currentSessionId, input),
         [WS_METHODS.workspaceWorkCreate]: (input) => workSessions.create(input),

@@ -271,6 +271,7 @@ export const make = Effect.gen(function* () {
       botRoutines: true,
       botToolAccess: true,
       botCapabilities: true,
+      pucko: true,
       workspaceReview: true,
       studioDownloads: true,
       npmReleaseLookup: true,

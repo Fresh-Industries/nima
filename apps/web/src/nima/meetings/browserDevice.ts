@@ -1,85 +1,112 @@
-import type { MeetingClip, MeetingDevice } from "@t3tools/client-runtime/meetings";
-import { randomUUID } from "../../lib/utils";
+import type { MeetingDevice } from "@t3tools/client-runtime/meetings";
 
 export class BrowserMeetingDevice implements MeetingDevice {
   private peer: RTCPeerConnection | null = null;
   private microphone: MediaStream | null = null;
-  private events: RTCDataChannel | null = null;
   private output: MediaStream | null = null;
-  private recorder: MediaRecorder | null = null;
-  private clips = new Set<MeetingClip>();
-  private finalized = false;
-  private closing: Promise<boolean> | null = null;
-  private resolveClose: ((confirmed: boolean) => void) | null = null;
-  private captureStopped = false;
-  private closingRequested = false;
+  private sender: RTCRtpSender | null = null;
+  private events: RTCDataChannel | null = null;
+  private context: AudioContext | null = null;
+  private gain: GainNode | null = null;
+  private inputSource: MediaStreamAudioSourceNode | null = null;
+  private inputMeter: AnalyserNode | null = null;
+  private outputMeter: AnalyserNode | null = null;
+  private sampler: ReturnType<typeof setInterval> | undefined;
   private startupTimeout: ReturnType<typeof setTimeout> | undefined;
-  private onFailure: ((message: string) => void) | null = null;
+  private volume = 0.8;
+  private playback = false;
+  private closing: Promise<boolean> | null = null;
+  private closingRequested = false;
+  private finalized = false;
+  private resolveClose: ((confirmed: boolean) => void) | null = null;
+  private onEvent: (event: unknown) => void = () => {};
+  private onFailure: (message: string) => void = () => {};
 
   async offer(
     onEvent: (event: unknown) => void,
     onFailure: (message: string) => void,
     signal: AbortSignal,
+    onStage: (stage: string) => void,
   ) {
+    try {
+      return await this.prepareOffer(onEvent, onFailure, signal, onStage);
+    } catch (error) {
+      await this.close();
+      throw error;
+    }
+  }
+  private async prepareOffer(
+    onEvent: (event: unknown) => void,
+    onFailure: (message: string) => void,
+    signal: AbortSignal,
+    onStage: (stage: string) => void,
+  ) {
+    this.onEvent = onEvent;
     this.onFailure = onFailure;
+    if (!navigator.mediaDevices?.getUserMedia)
+      throw new Error(
+        "Microphone access requires the desktop app, localhost, or an HTTPS connection.",
+      );
     const peer = new RTCPeerConnection();
     this.peer = peer;
-    const microphone = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true },
-    });
-    if (signal.aborted) {
-      microphone.getTracks().forEach((track) => track.stop());
-      peer.close();
-      throw new Error("Meeting canceled before microphone preparation finished.");
-    }
-    this.microphone = microphone;
-    signal.addEventListener("abort", () => this.stopCapture(), { once: true });
-    microphone.getTracks().forEach((track) => {
-      peer.addTrack(track, microphone);
-      track.addEventListener("ended", () => onFailure("Microphone disconnected. Capture stopped."));
-    });
-    // No audio element or connected audio destination: unsolicited model output is inaudible.
+    this.context = new AudioContext();
+    await this.context.resume();
+    onStage("Waiting for microphone permission");
+    const microphone = await this.capture(signal);
+    if (signal.aborted) throw new Error("Meeting canceled.");
+    onStage("Microphone ready");
+    for (const track of microphone.getAudioTracks()) this.sender = peer.addTrack(track, microphone);
     peer.addEventListener("track", ({ track }) => {
+      if (track.kind !== "audio" || this.closingRequested || !this.context) return;
       this.output = new MediaStream([track]);
+      this.outputMeter = this.context.createAnalyser();
+      this.outputMeter.fftSize = 1024;
+      this.gain = this.context.createGain();
+      this.context.createMediaStreamSource(this.output).connect(this.outputMeter);
+      this.outputMeter.connect(this.gain);
+      this.gain.connect(this.context.destination);
+      this.setPlayback(this.playback);
+      onStage("Speaker audio connected");
     });
     peer.addEventListener("connectionstatechange", () => {
+      if (this.closingRequested) return;
+      if (peer.connectionState === "connected") onStage("Voice transport connected");
       if (peer.connectionState === "failed" || peer.connectionState === "disconnected")
-        onFailure("Voice connection lost. Capture stopped; authorized Work continues.");
+        onFailure("Voice connection lost. Local capture stopped; authorized tasks continue.");
     });
     const events = peer.createDataChannel("oai-events");
     this.events = events;
+    events.addEventListener("open", () => onStage("Voice event channel connected"));
+    events.addEventListener("error", () => {
+      if (!this.closingRequested) onFailure("The voice event channel failed. Retry the meeting.");
+    });
+    events.addEventListener("close", () => {
+      this.resolveClose?.(this.finalized);
+      if (!this.closingRequested && !this.finalized)
+        onFailure("The voice event channel closed. Capture stopped.");
+    });
     events.addEventListener("message", ({ data }) => {
       if (typeof data !== "string" || data.length > 64000) return;
       let event: unknown;
       try {
         event = JSON.parse(data);
       } catch {
-        onFailure("Invalid voice event. Capture stopped.");
+        onFailure("The voice service sent an invalid event.");
         return;
       }
-      if (
-        typeof event === "object" &&
-        event !== null &&
-        "type" in event &&
-        event.type === "session.closed"
-      ) {
+      if (typeof event !== "object" || event === null || !("type" in event)) return;
+      if (event.type === "session.started") clearTimeout(this.startupTimeout);
+      if (event.type === "session.closed") {
         this.finalized = true;
         this.resolveClose?.(true);
       }
-      onEvent(event);
-      if (
-        typeof event === "object" &&
-        event !== null &&
-        "type" in event &&
-        event.type === "session.started"
-      )
-        clearTimeout(this.startupTimeout);
+      try {
+        onEvent(event);
+      } catch {
+        onFailure("Could not process a voice update. Capture stopped.");
+      }
     });
-    events.addEventListener("close", () => {
-      if (!this.closingRequested && !this.finalized)
-        onFailure("Voice event channel closed. Capture stopped.");
-      this.resolveClose?.(this.finalized);
-    });
+    onStage("Preparing voice connection");
     await peer.setLocalDescription(await peer.createOffer());
     if (peer.iceGatheringState !== "complete")
       await new Promise<void>((resolve, reject) => {
@@ -95,7 +122,7 @@ export class BrowserMeetingDevice implements MeetingDevice {
         };
         const aborted = () => finish(new Error("Meeting canceled."));
         const timeout = setTimeout(
-          () => finish(new Error("Voice connection timed out during ICE setup.")),
+          () => finish(new Error("Voice connection timed out while gathering network candidates.")),
           10000,
         );
         peer.addEventListener("icegatheringstatechange", changed);
@@ -103,139 +130,153 @@ export class BrowserMeetingDevice implements MeetingDevice {
         if (signal.aborted) aborted();
         else changed();
       });
-    if (!peer.localDescription?.sdp) throw new Error("No local SDP offer.");
+    if (!peer.localDescription?.sdp)
+      throw new Error("The browser could not prepare a voice connection offer.");
+    this.sampleAudio();
     return peer.localDescription.sdp;
   }
-
+  private async capture(signal: AbortSignal) {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
+    if (signal.aborted || this.closingRequested) {
+      stream.getTracks().forEach((track) => track.stop());
+      throw new Error("Meeting canceled before microphone preparation finished.");
+    }
+    this.microphone = stream;
+    signal.addEventListener("abort", () => this.stopCapture(), { once: true });
+    for (const track of stream.getTracks())
+      track.addEventListener("ended", () => {
+        if (this.microphone === stream) this.onFailure("Microphone disconnected. Capture stopped.");
+      });
+    if (this.context) {
+      this.inputSource = this.context.createMediaStreamSource(stream);
+      this.inputMeter = this.context.createAnalyser();
+      this.inputMeter.fftSize = 1024;
+      this.inputSource.connect(this.inputMeter);
+    }
+    return stream;
+  }
+  private sampleAudio() {
+    const input = new Float32Array(1024),
+      output = new Float32Array(1024);
+    let inputActive = false,
+      outputActive = false,
+      inputQuiet = 0,
+      outputQuiet = 0,
+      lastLevel = 0;
+    const rms = (meter: AnalyserNode | null, buffer: Float32Array<ArrayBuffer>) => {
+      if (!meter) return 0;
+      meter.getFloatTimeDomainData(buffer);
+      return Math.sqrt(buffer.reduce((sum, value) => sum + value * value, 0) / buffer.length);
+    };
+    // Acoustic thresholds segment real audio; they do not simulate character or task states.
+    this.sampler = setInterval(() => {
+      const incoming = rms(this.inputMeter, input),
+        outgoing = rms(this.outputMeter, output);
+      if (incoming > 0.018 && !inputActive) {
+        inputActive = true;
+        this.onEvent({ type: "device.input-start" });
+      }
+      inputQuiet = incoming > 0.018 ? 0 : inputQuiet + 1;
+      if (inputActive && inputQuiet >= 12) {
+        inputActive = false;
+        this.onEvent({ type: "device.input-end" });
+      }
+      const wasOutput = outputActive;
+      if (outgoing > 0.006) outputActive = true;
+      outputQuiet = outgoing > 0.006 ? 0 : outputQuiet + 1;
+      if (outputActive && outputQuiet >= 12) {
+        outputActive = false;
+        this.onEvent({ type: "device.output-end" });
+      }
+      const level = this.playback ? Math.min(1, outgoing * this.volume * 8) : 0;
+      if (
+        Math.abs(level - lastLevel) > 0.035 ||
+        wasOutput !== outputActive ||
+        (level === 0 && lastLevel !== 0)
+      ) {
+        lastLevel = level;
+        this.onEvent({ type: "device.audio", level, outputActive });
+      }
+    }, 50);
+  }
   async accept(sdp: string) {
-    if (!this.peer || !this.microphone) throw new Error("Microphone capture has stopped.");
-    this.startupTimeout = setTimeout(() => {
-      this.stopCapture();
-      this.onFailure?.("GPT-Live did not confirm startup. Capture stopped.");
-      void this.close();
-    }, 15000);
+    if (!this.peer || !this.microphone || this.closingRequested)
+      throw new Error("Microphone capture has stopped.");
+    this.startupTimeout = setTimeout(
+      () =>
+        this.onFailure(
+          "GPT-Live did not confirm startup. Check the connection diagnostics and project access.",
+        ),
+      15000,
+    );
     await this.peer.setRemoteDescription({ type: "answer", sdp });
   }
-
   stopCapture() {
-    this.captureStopped = true;
-    clearTimeout(this.startupTimeout);
-    this.microphone?.getTracks().forEach((track) => track.stop());
+    const stream = this.microphone;
     this.microphone = null;
-    this.clips.forEach((clip) => clip.dispose());
-    this.clips.clear();
-    if (this.recorder?.state === "recording") this.recorder.stop();
+    stream?.getTracks().forEach((track) => track.stop());
+    this.inputSource?.disconnect();
+    this.inputSource = null;
+    this.inputMeter = null;
   }
-
+  async unmute(signal: AbortSignal) {
+    const stream = await this.capture(signal);
+    const track = stream.getAudioTracks()[0];
+    if (!track || !this.sender) {
+      this.stopCapture();
+      throw new Error("The microphone could not reconnect.");
+    }
+    try {
+      await this.sender.replaceTrack(track);
+    } catch (error) {
+      this.stopCapture();
+      throw error;
+    }
+  }
+  setPlayback(enabled: boolean) {
+    this.playback = enabled;
+    if (this.gain) this.gain.gain.value = enabled ? this.volume : 0;
+  }
+  setVolume(volume: number) {
+    this.volume = volume;
+    this.setPlayback(this.playback);
+  }
+  send(event: Record<string, unknown>) {
+    if (this.events?.readyState === "open") this.events.send(JSON.stringify(event));
+  }
   close() {
     this.stopCapture();
+    clearTimeout(this.startupTimeout);
+    clearInterval(this.sampler);
     if (this.closing) return this.closing;
     this.closingRequested = true;
     this.closing = new Promise<boolean>((resolve) => {
       let timeout: ReturnType<typeof setTimeout> | undefined;
       let settled = false;
-      const cleanup = (confirmed: boolean) => {
+      const finish = (confirmed: boolean) => {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
+        this.events?.close();
         this.peer?.close();
         this.output?.getTracks().forEach((track) => track.stop());
         this.output = null;
-        this.recorder = null;
-        this.preview = null;
+        this.gain?.disconnect();
+        this.outputMeter?.disconnect();
+        if (this.context && this.context.state !== "closed")
+          void this.context.close().catch(() => {});
         resolve(confirmed);
       };
-      this.resolveClose = cleanup;
-      if (this.finalized) {
-        cleanup(true);
+      this.resolveClose = finish;
+      if (this.finalized || this.events?.readyState !== "open") {
+        finish(this.finalized);
         return;
       }
-      if (this.events?.readyState !== "open") {
-        cleanup(false);
-        return;
-      }
-      timeout = setTimeout(() => cleanup(false), 5000);
-      this.events.send(JSON.stringify({ type: "session.close" }));
+      timeout = setTimeout(() => finish(false), 5000);
+      this.send({ type: "session.close" });
     });
     return this.closing;
-  }
-
-  beginPreview(text: string) {
-    if (this.captureStopped || !this.output || this.events?.readyState !== "open")
-      throw new Error("Voice output is not ready.");
-    if (typeof MediaRecorder === "undefined")
-      throw new Error("Audio previews are unavailable on this client.");
-    const recorder = new MediaRecorder(this.output);
-    this.recorder = recorder;
-    const parts: Blob[] = [];
-    let bytes = 0;
-    recorder.addEventListener("dataavailable", ({ data }) => {
-      bytes += data.size;
-      if (bytes > 8 * 1024 * 1024) {
-        if (recorder.state === "recording") recorder.stop();
-      } else if (data.size) parts.push(data);
-    });
-    this.preview = new Promise<MeetingClip>((resolve, reject) => {
-      recorder.addEventListener("error", () =>
-        reject(new Error("Could not capture voice preview.")),
-      );
-      recorder.addEventListener(
-        "stop",
-        () => {
-          clearTimeout(limit);
-          const blob = new Blob(parts, { type: recorder.mimeType });
-          if (!blob.size) {
-            reject(new Error("GPT-Live returned no audio preview."));
-            return;
-          }
-          const url = URL.createObjectURL(blob);
-          const player = new Audio(url);
-          let disposed = false;
-          const clip: MeetingClip = {
-            play: () => (disposed ? Promise.reject(new Error("Preview expired.")) : player.play()),
-            stop: () => {
-              player.pause();
-              player.currentTime = 0;
-            },
-            dispose: () => {
-              if (disposed) return;
-              disposed = true;
-              player.pause();
-              player.removeAttribute("src");
-              URL.revokeObjectURL(url);
-              this.clips.delete(clip);
-            },
-          };
-          this.clips.add(clip);
-          if (this.captureStopped) clip.dispose();
-          resolve(clip);
-        },
-        { once: true },
-      );
-    });
-    const limit = setTimeout(() => {
-      if (recorder.state === "recording") recorder.stop();
-    }, 30000);
-    recorder.start(1000);
-    this.events.send(
-      JSON.stringify({
-        type: "session.commentary.append",
-        event_id: randomUUID(),
-        delegation_id: null,
-        content: `Prepare a short spoken preview of this verified Bara answer. Do not add facts or claim other work. ${text}`,
-      }),
-    );
-    // The controller may discard a preview after capture stops, without awaiting this promise.
-    void this.preview.catch(() => {});
-  }
-
-  private preview: Promise<MeetingClip> | null = null;
-
-  finishPreview() {
-    const preview = this.preview;
-    if (!preview) return Promise.reject(new Error("No active preview."));
-    if (this.recorder?.state === "recording") this.recorder.stop();
-    this.preview = null;
-    return preview;
   }
 }

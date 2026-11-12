@@ -166,6 +166,7 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   botRoutines: Schema.optionalKey(Schema.Boolean),
   botToolAccess: Schema.optionalKey(Schema.Boolean),
   botCapabilities: Schema.optionalKey(Schema.Boolean),
+  pucko: Schema.optionalKey(Schema.Boolean),
   workspaceReview: Schema.optionalKey(Schema.Boolean),
   studioDownloads: Schema.optionalKey(Schema.Boolean),
 });

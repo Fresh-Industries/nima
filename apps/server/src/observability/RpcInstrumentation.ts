@@ -88,6 +88,8 @@ const RPC_AGGREGATES = {
   [WS_METHODS.serverRefreshUsageRates]: "server",
   [WS_METHODS.serverSignalProcess]: "server",
   [WS_METHODS.serverReportClientActivity]: "server",
+  [WS_METHODS.puckoSubscribe]: "meetingExperiment",
+  [WS_METHODS.puckoConfigure]: "meetingExperiment",
   [WS_METHODS.workspaceGoalsRead]: "workspaceGoals",
   [WS_METHODS.workspaceGoalsWrite]: "workspaceGoals",
   [WS_METHODS.workspaceGoalsProgress]: "workspaceGoals",

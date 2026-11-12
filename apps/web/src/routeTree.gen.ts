@@ -23,6 +23,7 @@ import { Route as ChatStudioRouteImport } from './routes/_chat.studio'
 import { Route as ChatSpacesRouteImport } from './routes/_chat.spaces'
 import { Route as ChatSettingsRouteImport } from './routes/_chat.settings'
 import { Route as ChatPullRequestsRouteImport } from './routes/_chat.pull-requests'
+import { Route as ChatPuckoRouteImport } from './routes/_chat.pucko'
 import { Route as ChatNewRouteImport } from './routes/_chat.new'
 import { Route as ChatInboxRouteImport } from './routes/_chat.inbox'
 import { Route as ChatGoalsRouteImport } from './routes/_chat.goals'
@@ -123,6 +124,11 @@ const ChatSettingsRoute = ChatSettingsRouteImport.update({
 const ChatPullRequestsRoute = ChatPullRequestsRouteImport.update({
   id: '/pull-requests',
   path: '/pull-requests',
+  getParentRoute: () => ChatRoute,
+} as any)
+const ChatPuckoRoute = ChatPuckoRouteImport.update({
+  id: '/pucko',
+  path: '/pucko',
   getParentRoute: () => ChatRoute,
 } as any)
 const ChatNewRoute = ChatNewRouteImport.update({
@@ -302,6 +308,7 @@ export interface FileRoutesByFullPath {
   '/goals': typeof ChatGoalsRoute
   '/inbox': typeof ChatInboxRoute
   '/new': typeof ChatNewRoute
+  '/pucko': typeof ChatPuckoRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/settings': typeof ChatSettingsRouteWithChildren
   '/spaces': typeof ChatSpacesRoute
@@ -348,6 +355,7 @@ export interface FileRoutesByTo {
   '/goals': typeof ChatGoalsRoute
   '/inbox': typeof ChatInboxRoute
   '/new': typeof ChatNewRoute
+  '/pucko': typeof ChatPuckoRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/settings': typeof ChatSettingsRouteWithChildren
   '/spaces': typeof ChatSpacesRoute
@@ -397,6 +405,7 @@ export interface FileRoutesById {
   '/_chat/goals': typeof ChatGoalsRoute
   '/_chat/inbox': typeof ChatInboxRoute
   '/_chat/new': typeof ChatNewRoute
+  '/_chat/pucko': typeof ChatPuckoRoute
   '/_chat/pull-requests': typeof ChatPullRequestsRoute
   '/_chat/settings': typeof ChatSettingsRouteWithChildren
   '/_chat/spaces': typeof ChatSpacesRoute
@@ -447,6 +456,7 @@ export interface FileRouteTypes {
     | '/goals'
     | '/inbox'
     | '/new'
+    | '/pucko'
     | '/pull-requests'
     | '/settings'
     | '/spaces'
@@ -493,6 +503,7 @@ export interface FileRouteTypes {
     | '/goals'
     | '/inbox'
     | '/new'
+    | '/pucko'
     | '/pull-requests'
     | '/settings'
     | '/spaces'
@@ -541,6 +552,7 @@ export interface FileRouteTypes {
     | '/_chat/goals'
     | '/_chat/inbox'
     | '/_chat/new'
+    | '/_chat/pucko'
     | '/_chat/pull-requests'
     | '/_chat/settings'
     | '/_chat/spaces'
@@ -687,6 +699,13 @@ declare module '@tanstack/react-router' {
       path: '/pull-requests'
       fullPath: '/pull-requests'
       preLoaderRoute: typeof ChatPullRequestsRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/_chat/pucko': {
+      id: '/_chat/pucko'
+      path: '/pucko'
+      fullPath: '/pucko'
+      preLoaderRoute: typeof ChatPuckoRouteImport
       parentRoute: typeof ChatRoute
     }
     '/_chat/new': {
@@ -983,6 +1002,7 @@ interface ChatRouteChildren {
   ChatGoalsRoute: typeof ChatGoalsRoute
   ChatInboxRoute: typeof ChatInboxRoute
   ChatNewRoute: typeof ChatNewRoute
+  ChatPuckoRoute: typeof ChatPuckoRoute
   ChatPullRequestsRoute: typeof ChatPullRequestsRoute
   ChatSettingsRoute: typeof ChatSettingsRouteWithChildren
   ChatSpacesRoute: typeof ChatSpacesRoute
@@ -999,6 +1019,7 @@ const ChatRouteChildren: ChatRouteChildren = {
   ChatGoalsRoute: ChatGoalsRoute,
   ChatInboxRoute: ChatInboxRoute,
   ChatNewRoute: ChatNewRoute,
+  ChatPuckoRoute: ChatPuckoRoute,
   ChatPullRequestsRoute: ChatPullRequestsRoute,
   ChatSettingsRoute: ChatSettingsRouteWithChildren,
   ChatSpacesRoute: ChatSpacesRoute,

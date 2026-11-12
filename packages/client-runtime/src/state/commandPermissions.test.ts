@@ -129,6 +129,7 @@ describe("command permissions", () => {
     WS_METHODS.personalAgentWrite,
     WS_METHODS.projectTeamsWrite,
     WS_METHODS.botsCreate,
+    WS_METHODS.puckoConfigure,
     WS_METHODS.botsWrite,
     WS_METHODS.botsResolveApproval,
     WS_METHODS.personalAgentRemember,

@@ -1,162 +1,93 @@
-# Desktop meeting feasibility trial
+# Pucko voice verification
 
-This opt-in experiment uses GPT-Live client delegation for voice and the existing
-Bara Work conversation for reasoning, tools, permissions and asynchronous workers.
-It does not introduce a meeting database, task scheduler, or a Meetings destination.
-Do not expand it until a real two-person meeting has been evaluated.
+Pucko is a standalone app in Bara's tool dock and account menu. It uses GPT-Live
+for realtime conversation and the existing Work runtime for tools and notes.
+There is no manual Work session prerequisite.
 
-## Run the trial
+## Setup
 
-Set `BARA_MEETING_EXPERIMENT=true` and `OPENAI_API_KEY` in the **server's** environment,
-then restart the server. The key needs GPT-Live project access; a Codex subscription
-does not provide that API access. Keep the key out of chat and source control.
-For isolated development, use `vp run dev --home-dir /workspace/scratch/bara-meeting-trial --no-seed`.
-The server data directory must be outside a Git checkout for personal Work.
+Open **Pucko → Settings**, choose the Bara server that will own the meeting and
+save an OpenAI project key with GPT-Live access. The credential stays in that
+server's private secret store. A saved key overrides `OPENAI_API_KEY`; removing
+it restores that environment fallback. No restart or experimental flag is needed.
+A Codex subscription does not supply GPT-Live API access. An installed Windows
+server has its own settings; a Linux checkout's `.env.local` does not configure it.
 
-For the installed Windows app's local server, fully quit Bara, then run this in
-PowerShell. The prompt hides the key; the settings persist in your Windows user
-environment. Launch from this terminal so the new process receives them immediately:
+Choose an optional project and coordinator to reuse their existing provider,
+tools and permissions. Personal Work is the default. Voice can connect before
+an agent provider is configured; a task or notes request will report that problem.
 
-```powershell
-$env:OPENAI_API_KEY = [System.Net.NetworkCredential]::new('', (Read-Host 'OpenAI API key' -AsSecureString)).Password
-$env:BARA_MEETING_EXPERIMENT = 'true'
-[Environment]::SetEnvironmentVariable('OPENAI_API_KEY', $env:OPENAI_API_KEY, 'User')
-[Environment]::SetEnvironmentVariable('BARA_MEETING_EXPERIMENT', 'true', 'User')
-Start-Process "$env:LOCALAPPDATA\Programs\Bara\Bara.exe"
-```
+For isolated development, run `vp run dev --home-dir /tmp/bara-pucko-dev --no-seed`.
+Personal Work requires server data outside a Git checkout. Never use the live
+T3 home for tests.
 
-Use your installed `Bara.exe` path if you changed the installation directory.
-A remote Work session needs these settings on its remote server instead. A
-development checkout's `.env.local` does not configure the installed app.
-To disable the trial, set `BARA_MEETING_EXPERIMENT=false` in that server's
-environment and fully restart it.
+## Meeting behavior
 
-In desktop Bara, create a **new, empty local Work session**. Choose an existing
-coordinator, project or Personal Work, and the working model/access level using
-the usual controls. Open **Meeting trial** in its header. The trial is also
-available in the development web renderer for verification, but is hidden in
-production web and has no native mobile entry point.
+Start Meeting requires everyone's consent. The app streams microphone audio to
+OpenAI and saves transcript text and structured notes to the selected server.
+Bara does not record raw audio. `store: false` disables optional stored Live
+recordings; it does not assert zero provider retention.
 
-1. Acknowledge every participant's consent, then start. The microphone indicator
-   identifies capture and transmission to OpenAI. Discuss the topic normally.
-2. Say “Citrus, what do you think about our strategy?” Use recent speech, correct
-   the request, and choose **Send reviewed request**. Background discussion alone
-   never submits work. The transcript can contain incomplete fragments and errors.
-3. Refresh confirmed status to read the working agent's answer. To hear it through
-   GPT-Live, choose **Prepare voice preview**, wait for the preview text, then
-   **Finish voice preview**. Review the generated words before explicitly playing
-   the local clip. Never approve an incorrect or unrelated preview.
-4. Ask “Citrus, research these competitors and make a document,” review the precise
-   assignment, and send it. Delegation uses the agent's existing `delegate_task`
-   asynchronous path. Existing access restrictions and approval requests apply;
-   the trial cannot grant permissions or approve requests on your behalf.
-5. Keep talking while the worker runs. Send reviewed status questions or corrections
-   through the coordinator. Use the actual child Work conversation for pending
-   approvals and results. Refresh shows persisted task states; an accepted request
-   is not evidence that a provider has started or a deliverable exists.
-6. **Mute and end capture** stops the local microphone immediately. Then choose
-   **Prepare notes in Work**. Refresh for the result, which includes decisions,
-   action items, uncertainties and confirmed work links. Save the result to Library
-   using the usual Work controls. Authorized background work continues after ending
-   or closing the trial.
+The activation name defaults to **Citrus** and is configurable in settings.
+Address Pucko at the beginning of a request. Ordinary questions use the meeting's
+voice context. Research and tool requests go through the selected agent with
+existing approval restrictions. A wake name grants no additional permissions.
 
-Closing the dialog, navigating away, losing the voice connection or the host
-connection, or losing environment permission stops local capture. End does not
-wait for the backend to acknowledge shutdown. The voice connection remains briefly
-for finalization; without `session.closed`, final voice usage is unconfirmed.
-Restart by creating a new trial; this slice does not recover live capture after
-reload or server restart. Stop the trial before closing the laptop lid.
+Mute stops local microphone tracks. Unmute reacquires capture. End stops capture
+immediately, finalizes the voice connection and requests notes; authorized agent
+work continues. Moving between apps keeps a meeting active and shows a microphone
+indicator with an End action. Reload, window shutdown, connection loss or revoked
+permissions stops capture. A server restart marks unfinished meetings interrupted.
+Meeting history and retrying notes are available inside Pucko. Summaries also save
+to Library through the existing Pages service.
 
-## Privacy and device boundaries
+Web and desktop share the app. Remote web microphone access requires HTTPS or
+localhost. Native mobile has no Pucko screen yet.
 
-Audio is sent directly to OpenAI over WebRTC, with `store: false`. This disables
-optional stored Live recordings; it does not assert zero provider retention.
-Unsubmitted transcript fragments stay in client memory. A reviewed request sends
-its current transcript context to the chosen Work conversation and provider; that
-context becomes ordinary durable conversation history. Notes submission saves the
-final context there too. No personal relationship conversation is copied to the
-voice model. Work still receives the coordinator's normally authorized scoped
-memory, skills and optional relationship recall; review that configuration before
-including another person in the meeting.
+## Protocol constraints
 
-Unsolicited remote audio has no connected playback destination. An explicit preview
-records remote output **in client memory**, bounded to 30 seconds and 8 MiB, and
-only plays after local approval. Stopping or closing releases capture, previews
-and object URLs. Browser permissions and the OS microphone indicator remain useful
-independent checks. No voice event, including `session.delegation.created`, can
-submit a command or grant approval.
+The integration follows the official [WebRTC](https://developers.openai.com/api/docs/guides/voice-webrtc),
+[delegation](https://developers.openai.com/api/docs/guides/live-delegation) and
+[Live session](https://developers.openai.com/api/docs/guides/live-conversations) guides.
 
-The `MeetingDevice` interface separates offer/answer transport, capture shutdown,
-preview capture and playback from the portable meeting controller. A Raspberry Pi
-client can implement that interface and use the same authenticated Bara command
-contract. Work intelligence stays in Bara's existing runtime. Hardware must retain
-a synchronous local capture stop and explicit playback authorization; server-side
-mute alone is insufficient. This experiment deliberately has no device provisioning
-or hardware service.
+- Creation uses `POST /v1/live/sessions`, model `gpt-live-1`, and the `oai-events`
+  data channel. Listening begins only after `session.started`.
+- Transcript deltas have no completed-turn marker. Local audio activity and
+  transcript timing bound requests; real room conditions need testing.
+- Delegation events have no task text. The bridge uses the addressed transcript
+  and current meeting context, suppresses unconfirmed acknowledgement, and sends
+  stable request IDs through the existing orchestration receipt path.
+- No per-answer output completion marker is documented. Speaker playback is gated
+  by an addressed invitation; local audio activity detects output silence and
+  interruption. Prompt instructions also request selective replies. This does not
+  provide human-speaker attribution or an acoustic wake-word guarantee.
+- Outgoing audio levels drive the mouth. Tasks and summaries use persisted agent
+  states. Text/audio frames are bounded and audio never passes through Bara RPC.
+- `session.commentary.append` receives bounded confirmed results. Background
+  completion notices wait for a quiet interval; they do not stop microphone capture.
+- Capture stops locally before waiting for `session.closed`. Missing confirmation
+  leaves final session usage unconfirmed. The app reports this explicitly.
 
-## API assumptions and unresolved behavior
+## Physical acceptance test
 
-The integration follows the current official [WebRTC](https://developers.openai.com/api/docs/guides/voice-webrtc),
-[client delegation](https://developers.openai.com/api/docs/guides/live-delegation),
-and [session](https://developers.openai.com/api/docs/guides/live-conversations) guides:
+Use synthetic business details and a harmless research task. Automated media
+fixtures prove lifecycle handling, not speaker audibility or recognition accuracy.
+Record actual pass/fail and provider errors without keys or private transcripts.
 
-- Session creation is `POST /v1/live/sessions` with JSON `session` and
-  `transport: { type: "webrtc", sdp }`; success must contain the original opaque
-  `session.id` and `transport.sdp`. It does not use the older Realtime endpoint,
-  ephemeral-key flow or `response.create` tool loop.
-- Wait for `session.started`. Transcript events are `session.input_transcript.delta`
-  and `session.output_transcript.delta`, with `event_id`, `delta`, `start_ms` and
-  `end_ms`. Deltas have no completed conversational-turn marker. They are
-  deduplicated; timestamps are retained. Missing/changed event shapes need an
-  adapter update, not a permissive fallback that starts work.
-- Client delegation events have no task text. This slice deliberately uses
-  reviewed transcript requests instead of interpreting those events as commands.
-- GPT-Live has no documented output completion marker or reliable per-answer
-  playback correlation in this flow. The preview is bounded and manually stopped;
-  its captions can include delayed or unrelated model output. Review before play.
-  Direct automatic playback and automatic name-triggered execution are unvalidated
-  and disabled. Prompting the model to be quiet is not the enforcement boundary.
-- There is no human-speaker attribution. Multiple participants share one stream;
-  the notes must not guess identities or owners. Overlapping speech, room echo,
-  transcript latency and barge-in need physical testing. During approved playback,
-  incoming human transcript deltas stop the player; transcription delay means this
-  is not an instantaneous acoustic interruption guarantee. Stop playback is local.
-- `session.commentary.append` accepts at most 500 tokens. Preview source text is
-  bounded, but actual acceptance and paraphrasing need live validation. Rejections
-  stop capture rather than opening playback or running alternative work.
-- The primary data channel owns events here; no sideband or new server WebSocket
-  infrastructure is added. Connection loss ends capture; there is no replay-based
-  recovery. GPT-Live duration charges include passive listening and microphone mute.
+1. Open Pucko directly from the dock. Start with consent and grant microphone access.
+   Verify the OS microphone indicator and `session.started` in developer diagnostics.
+2. Discuss a decision without addressing Pucko. Expect silence. Mention Citrus in
+   the third person and quote a request; expect no worker or audible response.
+3. Say “Citrus, what do you think?” Hear a short answer that uses preceding context.
+   Interrupt the reply; verify immediate local silence and a sensible continuation.
+4. Ask for competitor research. Verify an actual Bara task, correct project and
+   provider, visible required approvals and a real result. Keep discussing while
+   it runs. Check one completion notification and no duplicate task on retries.
+5. Mute, unmute, change volume, navigate to another app and return. Check actual
+   capture and playback, including a disconnected microphone and network loss.
+6. End during startup and during task execution. Capture must stop immediately;
+   existing work continues. Confirm notes, explicit decisions, action items with
+   only stated owners and unresolved questions. Restart Bara and read the history.
 
-These are documentation-based assumptions, not evidence of successful live API
-behavior. No GPT-Live project key was available during offline validation. The
-user elected to perform the live meeting test. Record actual model/API errors,
-event types, latency and behavior without keys, audio or private transcript text
-before changing the gates or expanding scope.
-
-## Two-person acceptance test
-
-Use synthetic business details and a harmless research/document task first.
-Verify the following with the OS microphone indicator, Work history and actual
-deliverables, not only the trial's labels:
-
-- Discuss Citrus in the third person, quote requests, and speak over each other.
-  Expect no audible response, provider turn, or worker until a request is reviewed
-  and submitted. Even a Live delegation event must not launch work.
-- Ask a question that requires earlier discussion. Check that the selected provider
-  answers from context. Repeat with Codex and Claude; voice must not change that
-  selection. Verify the preview matches the confirmed answer before playback.
-- Start one async task, keep talking, ask for status, then correct its brief. Verify
-  an actual child conversation, correct permissions, no duplicate task on retries,
-  and a saved document before describing it as finished.
-- End during provider execution and during connection startup. Expect local capture
-  to stop immediately while existing work continues. Test device removal, dialog
-  close/navigation, host disconnection, and a rejected permission as well.
-- Prepare notes. Check explicit decisions, missing attribution, action items and
-  ongoing/failed/completed work against what actually happened. Verify that the
-  canonical personal conversation was neither sent to OpenAI nor overwritten.
-
-Record pass/fail and observed delays for each item. A failed silence, execution,
-privacy or local-shutdown check blocks further scope. Hands-free invitations and
-automatic speech remain outside the proven experience until those gates have
-been replaced with validated controls.
+A successful mock or build is not a completed physical acceptance test. The
+prototype needs this pass on Windows Bara on Zeus before release readiness is claimed.

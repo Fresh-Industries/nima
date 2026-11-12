@@ -201,7 +201,7 @@ function BotAvatars() {
 
 function ProfileMenu() {
   const item = (
-    to: "/goals" | "/spaces" | "/studio" | "/inbox",
+    to: "/pucko" | "/goals" | "/spaces" | "/studio" | "/inbox",
     icon: ReactNode,
     label: string,
   ) => (
@@ -220,6 +220,7 @@ function ProfileMenu() {
         }
       />
       <MenuPopup side="bottom" align="end">
+        {item("/pucko", <Bot size={15} />, "Pucko")}
         {item("/inbox", <Inbox size={15} />, "Inbox")}
         {item("/goals", <Target size={15} />, "Goals")}
         {item("/spaces", <BookOpen size={15} />, "Library")}

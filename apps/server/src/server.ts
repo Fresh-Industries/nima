@@ -691,8 +691,11 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   Layer.provideMerge(
     Layer.mergeAll(
       AssistantConversation.layer,
-      WorkSessions.layer,
-      MeetingExperiment.layer.pipe(Layer.provide(LiveVoice.layer)),
+      MeetingExperiment.layer.pipe(
+        Layer.provideMerge(WorkSessions.layer),
+        Layer.provide(LiveVoice.layer),
+        Layer.provide(RuntimeLayer.layerEventSink),
+      ),
       ProjectTeams.layer,
       BotDelegation.layer,
     ),

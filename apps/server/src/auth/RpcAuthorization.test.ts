@@ -50,12 +50,14 @@ describe("RPC authorization scopes", () => {
       WS_METHODS.projectTeamsWrite,
       WS_METHODS.botsCreate,
       WS_METHODS.botsWrite,
+      WS_METHODS.puckoConfigure,
       WS_METHODS.botsResolveApproval,
       WS_METHODS.personalAgentRemember,
     ])
       expect(requiredScopeForRpcMethod(method)).toBe(AuthSettingsWriteScope);
     for (const method of [WS_METHODS.personalAgentRead, WS_METHODS.personalAgentSubscribe])
       expect(requiredScopeForRpcMethod(method)).toBe(AuthOrchestrationReadScope);
+    expect(requiredScopeForRpcMethod(WS_METHODS.puckoSubscribe)).toBe(AuthOrchestrationReadScope);
     expect(requiredScopeForRpcMethod(WS_METHODS.botsSubscribe)).toBe(AuthOrchestrationReadScope);
     expect(requiredScopeForRpcMethod(WS_METHODS.botsOpen)).toBe(AuthOrchestrationOperateScope);
     expect(requiredScopeForRpcMethod(WS_METHODS.workspaceReviewSubscribe)).toBe(
@@ -239,11 +241,16 @@ it.effect.each([
 );
 
 it.effect.each([
-  { scopes: [AuthOrchestrationOperateScope], missing: AuthOrchestrationReadScope },
-  { scopes: [AuthOrchestrationReadScope], missing: AuthOrchestrationOperateScope },
+  { scopes: [AuthOrchestrationOperateScope], missing: AuthOrchestrationReadScope, notes: false },
+  { scopes: [AuthOrchestrationReadScope], missing: AuthOrchestrationOperateScope, notes: false },
+  {
+    scopes: [AuthOrchestrationReadScope, AuthOrchestrationOperateScope],
+    missing: AuthFilesystemWriteScope,
+    notes: true,
+  },
 ])(
   "requires meeting read and operate grants before reaching the handler: $missing",
-  ({ scopes, missing }) =>
+  ({ scopes, missing, notes }) =>
     Effect.gen(function* () {
       const group = WsRpcGroup.omit(
         ...[...WsRpcGroup.requests.keys()].filter(
@@ -269,9 +276,11 @@ it.effect.each([
         ),
       );
       expect(
-        yield* client[WS_METHODS.meetingExperiment]({ action: "inspect", id: "meeting" }).pipe(
-          Effect.flip,
-        ),
+        yield* client[WS_METHODS.meetingExperiment](
+          notes
+            ? { action: "notes", id: "meeting", requestId: "notes" }
+            : { action: "inspect", id: "meeting" },
+        ).pipe(Effect.flip),
       ).toMatchObject({ requiredPermission: missing });
       expect(handled).toBe(false);
     }).pipe(Effect.scoped),

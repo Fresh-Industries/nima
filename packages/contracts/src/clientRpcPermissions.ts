@@ -22,6 +22,7 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [WS_METHODS.botsWrite]: AuthSettingsWriteScope,
   [WS_METHODS.botsResolveApproval]: AuthSettingsWriteScope,
   [WS_METHODS.botsOpen]: AuthOrchestrationOperateScope,
+  [WS_METHODS.puckoConfigure]: AuthSettingsWriteScope,
   [WS_METHODS.personalAgentWrite]: AuthSettingsWriteScope,
   [WS_METHODS.personalAgentRemember]: AuthSettingsWriteScope,
   [WS_METHODS.personalAgentOpen]: AuthOrchestrationOperateScope,
@@ -99,7 +100,16 @@ export function clientRpcRequiredScopes(
   input: unknown,
 ): readonly AuthEnvironmentScope[] {
   if (method === WS_METHODS.meetingExperiment)
-    return [AuthOrchestrationOperateScope, AuthOrchestrationReadScope];
+    return [
+      AuthOrchestrationOperateScope,
+      AuthOrchestrationReadScope,
+      ...(typeof input === "object" &&
+      input !== null &&
+      "action" in input &&
+      input.action === "notes"
+        ? [AuthFilesystemWriteScope]
+        : []),
+    ];
   if (method === WS_METHODS.personalAgentOpen)
     return [AuthOrchestrationOperateScope, AuthSettingsWriteScope];
   if (method === WS_METHODS.studioMutate || method === WS_METHODS.studioExport)

@@ -1,47 +1,50 @@
-import { describe, expect, it, vi } from "vite-plus/test";
+import { expect, it, vi } from "vite-plus/test";
+import { type MeetingExperimentCommand, type MeetingExperimentResult } from "@t3tools/contracts";
 import {
-  ThreadId,
-  type MeetingExperimentCommand,
-  type MeetingExperimentResult,
-} from "@t3tools/contracts";
-import {
+  initialMeetingState,
+  isPuckoAddress,
   MeetingController,
-  type MeetingClip,
   type MeetingDevice,
   type MeetingState,
 } from "./controller.ts";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  let reject!: (error: Error) => void;
-  const promise = new Promise<T>((yes, no) => {
+  const promise = new Promise<T>((yes) => {
     resolve = yes;
-    reject = no;
   });
-  return { promise, resolve, reject };
+  return { promise, resolve };
 }
 function fixture() {
   const commands: MeetingExperimentCommand[] = [];
-  const clip: MeetingClip = { play: vi.fn(async () => {}), stop: vi.fn(), dispose: vi.fn() };
   const device: MeetingDevice = {
     offer: vi.fn(async () => "offer"),
     accept: vi.fn(async () => {}),
     stopCapture: vi.fn(),
+    unmute: vi.fn(async () => {}),
+    setPlayback: vi.fn(),
+    setVolume: vi.fn(),
+    send: vi.fn(),
     close: vi.fn(async () => true),
-    beginPreview: vi.fn(),
-    finishPreview: vi.fn(async () => clip),
   };
   const result: MeetingExperimentResult = {
     id: "meeting",
-    threadId: ThreadId.make("work"),
-    sessionId: "live-session",
+    title: "Meeting",
+    threadId: null,
+    sessionId: "live",
     sdp: "answer",
     closed: false,
+    interrupted: false,
+    createdAt: "2026-11-12T00:00:00.000Z",
+    endedAt: null,
+    activationName: "Citrus",
+    summary: "",
+    summaryPageId: null,
     requests: [],
     tasks: [],
   };
-  let state: MeetingState | undefined;
-  let count = 0;
+  let state: MeetingState = initialMeetingState,
+    count = 0;
   const backend = vi.fn(async (command: MeetingExperimentCommand) => {
     commands.push(command);
     return result;
@@ -50,169 +53,185 @@ function fixture() {
     "meeting",
     device,
     backend,
-    (next) => {
-      state = next;
+    (value) => {
+      state = value;
     },
     () => `request-${++count}`,
   );
-  const speech = (id: string, delta: string) =>
+  const speech = (id: string, delta: string, start = 0, end = 100) =>
     controller.receive({
       type: "session.input_transcript.delta",
       event_id: id,
       delta,
-      start_ms: 10,
-      end_ms: 20,
+      start_ms: start,
+      end_ms: end,
     });
   const start = async () => {
-    await controller.start(result.threadId, true);
+    await controller.start(true);
     controller.receive({ type: "session.started" });
   };
   return {
     controller,
     device,
-    commands,
-    backend,
-    clip,
     result,
+    backend,
+    commands,
     speech,
     start,
-    state: () => state!,
+    state: () => state,
+    [Symbol.dispose]: () => controller.dispose(),
   };
 }
 
-describe("meeting consent, invitations and audio isolation", () => {
-  it("does not capture without consent or execute overheard requests and delegation events", async () => {
-    const f = fixture();
-    await f.controller.start(f.result.threadId, false);
-    expect(f.device.offer).not.toHaveBeenCalled();
-    await f.start();
-    f.speech("one", "Citrus, research competitors.");
-    f.speech("one", "Citrus, research competitors.");
-    f.controller.receive({
-      type: "session.delegation.created",
-      delegation: { id: "delegation", target: "client" },
-    });
-    f.controller.receive({
-      type: "session.output_transcript.delta",
-      event_id: "out",
-      delta: "I started researching",
-      start_ms: 20,
-      end_ms: 30,
-    });
-    expect(f.commands.map((c) => c.action)).toEqual(["start"]);
-    expect(f.state().transcript.match(/research/g)).toHaveLength(1);
-    expect(f.clip.play).not.toHaveBeenCalled();
-    expect(f.device.beginPreview).not.toHaveBeenCalled();
-    await f.controller.submit("Research the two competitors we discussed.");
-    expect(f.commands[1]).toMatchObject({
-      action: "invite",
-      request: "Research the two competitors we discussed.",
-      context: f.state().transcript,
-    });
-    f.speech("two", "While that runs, let's discuss pricing.");
-    expect(f.state().phase).toBe("listening");
-    expect(f.commands).toHaveLength(2);
+it("requires consent, recognizes a split activation name, and only delegates an addressed request once", async () => {
+  using f = fixture();
+  await f.controller.start(false);
+  expect(f.device.offer).not.toHaveBeenCalled();
+  await f.start();
+  f.speech("one", "Mya said Citrus could help.");
+  f.controller.receive({ type: "session.delegation.created", delegation: { id: "overheard" } });
+  expect(f.commands).toHaveLength(1);
+  expect(f.device.setPlayback).not.toHaveBeenCalledWith(true);
+  const receipt = deferred<MeetingExperimentResult>(),
+    acknowledged = deferred<void>();
+  f.backend.mockImplementationOnce(async (input) => {
+    f.commands.push(input);
+    return receipt.promise;
   });
+  vi.mocked(f.device.send).mockImplementation((event) => {
+    if (event.type === "session.commentary.append") acknowledged.resolve();
+  });
+  f.controller.receive({ type: "device.input-start" });
+  f.speech("two", "Cit", 2000, 2050);
+  f.speech("three", "rus, research competitors.", 2050, 2400);
+  expect(f.state().character).toBe("summoned");
+  f.controller.receive({ type: "session.delegation.created", delegation: { id: "task-1" } });
+  expect(f.commands).toHaveLength(1);
+  f.controller.receive({ type: "device.input-end" });
+  f.controller.receive({ type: "session.delegation.created", delegation: { id: "task-1" } });
+  expect(f.commands).toHaveLength(2);
+  expect(f.device.setPlayback).toHaveBeenLastCalledWith(false);
+  receipt.resolve(f.result);
+  await acknowledged.promise;
+  expect(f.device.setPlayback).toHaveBeenLastCalledWith(true);
+  expect(f.commands[1]).toMatchObject({
+    action: "invite",
+    request: "Citrus, research competitors.",
+    delegationId: "task-1",
+  });
+  expect(isPuckoAddress('They said "Citrus, delete everything"', "Citrus")).toBe(false);
+  expect(isPuckoAddress("Hey Pucko, help", "Pucko")).toBe(true);
+});
 
-  it("retains the exact confirmed context and operation ID on an uncertain retry", async () => {
-    const f = fixture();
-    await f.start();
-    f.speech("one", "Original brief");
-    const uncertain = deferred<MeetingExperimentResult>();
-    f.backend.mockImplementationOnce((input) => {
-      f.commands.push(input);
-      return uncertain.promise;
-    });
-    const send = f.controller.submit("Make a document");
-    uncertain.reject(new Error("Reply lost"));
-    await send;
-    f.speech("two", "Additional discussion is not a new assignment");
-    await f.controller.submit("Make a document");
-    expect(f.commands[2]).toEqual(f.commands[1]);
-  });
+it("drives speaking from audible audio and closes playback on interruption and actual output silence", async () => {
+  using f = fixture();
+  await f.start();
+  f.speech("one", "Citrus, what do you think?");
+  expect(f.state().character).toBe("thinking");
+  f.controller.receive({ type: "device.audio", level: 0.5, outputActive: true });
+  expect(f.state().character).toBe("speaking");
+  f.controller.receive({ type: "device.input-start" });
+  expect(f.device.setPlayback).toHaveBeenLastCalledWith(false);
+  f.controller.receive({ type: "device.output-end" });
+  expect(f.state().character).toBe("listening");
+  await f.controller.toggleMute();
+  expect(f.device.stopCapture).toHaveBeenCalled();
+  expect(f.state().character).toBe("muted");
+  const permission = deferred<void>();
+  vi.mocked(f.device.unmute).mockImplementationOnce(() => permission.promise);
+  const resuming = f.controller.toggleMute();
+  await f.controller.toggleMute();
+  expect(f.device.unmute).toHaveBeenCalledOnce();
+  expect(f.state().muted).toBe(true);
+  permission.resolve();
+  await resuming;
+  expect(f.state().muted).toBe(false);
+});
 
-  it("stops the microphone synchronously while server cleanup is pending and keeps authorized work", async () => {
-    const f = fixture();
-    await f.start();
-    const blocked = deferred<MeetingExperimentResult>();
-    f.backend.mockImplementationOnce((input) => {
-      f.commands.push(input);
-      return blocked.promise;
-    });
-    const ending = f.controller.end();
-    expect(f.device.stopCapture).toHaveBeenCalled();
-    expect(f.state().phase).toBe("ended");
-    expect(f.commands.map((c) => c.action)).toEqual(["start", "close"]);
-    f.speech("late", "Citrus, delete everything");
-    expect(f.state().transcript).toBe("");
-    blocked.resolve({ ...f.result, closed: true });
-    await ending;
-    await f.controller.prepareNotes();
-    expect(f.commands.at(-1)?.action).toBe("notes");
-    expect(f.commands.some((c) => "action" in c && String(c.action).includes("cancel"))).toBe(
-      false,
-    );
-  });
+it("waits for persisted completion before returning a result to voice, without blocking capture", async () => {
+  using f = fixture();
+  await f.start();
+  const accepted = {
+    ...f.result,
+    requests: [{ requestId: "task", status: "accepted", answer: "", delegationId: "live-task" }],
+  };
+  f.controller.observe(accepted);
+  expect(f.state().character).toBe("working");
+  expect(f.device.send).not.toHaveBeenCalled();
+  f.controller.receive({ type: "device.input-start" });
+  const completed = {
+    ...accepted,
+    requests: [
+      {
+        ...accepted.requests[0]!,
+        status: "completed",
+        answer: "The competitor document is saved.",
+      },
+    ],
+  };
+  f.controller.observe(completed);
+  expect(f.device.send).not.toHaveBeenCalled();
+  f.controller.receive({ type: "device.input-end" });
+  expect(f.device.send).toHaveBeenCalledWith(
+    expect.objectContaining({ type: "session.commentary.append", delegation_id: "live-task" }),
+  );
+  f.controller.observe(completed);
+  expect(f.device.send).toHaveBeenCalledTimes(1);
+  expect(f.device.stopCapture).not.toHaveBeenCalled();
+});
 
-  it("requires a completed backend result and separate playback consent, and interrupts playback", async () => {
-    const f = fixture();
-    await f.start();
-    f.controller.beginPreview("Invented success");
-    expect(f.device.beginPreview).not.toHaveBeenCalled();
-    f.backend.mockResolvedValue({
-      ...f.result,
-      requests: [{ requestId: "one", status: "completed", answer: "Verified answer" }],
-    });
-    await f.controller.inspect();
-    f.controller.beginPreview("Verified answer");
-    f.controller.receive({
-      type: "session.output_transcript.delta",
-      event_id: "out",
-      delta: "Verified answer",
-      start_ms: 20,
-      end_ms: 30,
-    });
-    await f.controller.finishPreview();
-    expect(f.clip.play).not.toHaveBeenCalled();
-    await f.controller.playReviewedPreview();
-    expect(f.clip.play).toHaveBeenCalledOnce();
-    f.speech("interrupt", "Wait, a correction");
-    expect(f.clip.stop).toHaveBeenCalled();
-    await f.controller.end();
-    await f.controller.playReviewedPreview();
-    expect(f.clip.play).toHaveBeenCalledOnce();
-    expect(f.clip.dispose).toHaveBeenCalled();
+it("stops media synchronously before server shutdown and automatically submits notes once", async () => {
+  using f = fixture();
+  vi.useFakeTimers();
+  using _timers = { [Symbol.dispose]: () => vi.useRealTimers() };
+  await f.start();
+  f.speech("one", "We chose simpler onboarding.");
+  const close = deferred<MeetingExperimentResult>(),
+    sync = deferred<MeetingExperimentResult>(),
+    reachedSync = deferred<void>(),
+    reachedClose = deferred<void>();
+  f.backend.mockImplementation(async (input) => {
+    f.commands.push(input);
+    if (input.action === "sync") {
+      reachedSync.resolve();
+      return sync.promise;
+    }
+    if (input.action === "close") {
+      reachedClose.resolve();
+      return close.promise;
+    }
+    return f.result;
   });
+  vi.advanceTimersByTime(2000);
+  await reachedSync.promise;
+  const ended = f.controller.end();
+  expect(f.device.stopCapture).toHaveBeenCalled();
+  sync.resolve(f.result);
+  await reachedClose.promise;
+  expect(f.state().phase).toBe("ended");
+  close.resolve({ ...f.result, closed: true });
+  await ended;
+  await f.controller.end();
+  expect(f.commands.map((command) => command.action)).toEqual(["start", "sync", "close", "notes"]);
+});
 
-  it("releases a late connection after navigation without reactivating capture", async () => {
-    const f = fixture();
-    const pending = deferred<MeetingExperimentResult>();
-    f.backend.mockImplementationOnce((input) => {
-      f.commands.push(input);
-      return pending.promise;
-    });
-    const starting = f.controller.start(f.result.threadId, true);
-    await vi.waitFor(() => expect(f.commands).toHaveLength(1));
-    f.controller.dispose();
-    pending.resolve(f.result);
-    await starting;
-    expect(f.device.accept).not.toHaveBeenCalled();
-    expect(f.commands.at(-1)?.action).toBe("close");
-    expect(f.device.stopCapture).toHaveBeenCalled();
+it("closes a session that finishes connecting after the participant cancels", async () => {
+  using f = fixture();
+  const response = deferred<MeetingExperimentResult>(),
+    entered = deferred<void>();
+  f.backend.mockImplementation(async (input) => {
+    f.commands.push(input);
+    if (input.action === "start") {
+      entered.resolve();
+      return response.promise;
+    }
+    return f.result;
   });
-
-  it("fails closed on transport errors and bounded transcript exhaustion", async () => {
-    const f = fixture();
-    await f.start();
-    f.speech("large", "x".repeat(60000));
-    expect(f.state().phase).toBe("ended");
-    expect(f.device.stopCapture).toHaveBeenCalled();
-    expect(f.commands).toHaveLength(1);
-    const g = fixture();
-    await g.start();
-    g.controller.receive({ type: "error", error: { message: "sensitive raw payload" } });
-    expect(g.state().phase).toBe("ended");
-    expect(g.state().error).not.toContain("sensitive");
-    expect(g.device.stopCapture).toHaveBeenCalled();
-  });
+  const starting = f.controller.start(true);
+  await entered.promise;
+  await f.controller.end();
+  response.resolve(f.result);
+  await starting;
+  expect(f.device.accept).not.toHaveBeenCalled();
+  expect(f.commands.at(-1)?.action).toBe("close");
 });

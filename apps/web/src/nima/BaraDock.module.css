@@ -43,6 +43,9 @@
 .tool[data-tool="bots"] {
   --tool-hue: #9671b2;
 }
+.tool[data-tool="pucko"] {
+  --tool-hue: #82a88d;
+}
 .tool[data-tool="live"] {
   --tool-hue: #bd756b;
 }

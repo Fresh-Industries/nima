@@ -1,4 +1,3 @@
-import { MeetingExperimentButton } from "./meetings/MeetingExperiment";
 import { useAtomValue } from "@effect/atom-react";
 import { BotAvatar } from "./BotAvatar";
 import { Link } from "@tanstack/react-router";
@@ -81,11 +80,6 @@ export function WorkSessionHeader({ threadRef }: { threadRef: ScopedThreadRef })
           <span>Unassigned</span>
         )}
         <div className="ml-auto flex gap-2">
-          <MeetingExperimentButton
-            key={scopedThreadKey(threadRef)}
-            threadRef={threadRef}
-            connected={directory.connected}
-          />
           <Button size="xs" variant="ghost" onClick={() => setEditing(true)}>
             Session details
           </Button>
