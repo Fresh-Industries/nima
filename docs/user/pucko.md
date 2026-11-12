@@ -10,6 +10,9 @@ existing Bara agent and its tools. Work continues while you talk and after the
 meeting ends. Required approvals appear in Pucko; detailed conversations remain
 available through the meeting's work link.
 
+Pucko stays quiet during other conversation. Say “Citrus” again to ask for a task's
+result. If your browser blocks sound, choose **Enable speaker**, then address Pucko again.
+
 In **Pucko settings**, connect an OpenAI project key with GPT-Live access. The key
 is saved on the selected Bara server, so configure the Windows server when using
 Windows Bara. A coding subscription does not supply voice API access. You can

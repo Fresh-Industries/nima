@@ -4,6 +4,11 @@ import * as NodeUtil from "node:util";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import { puckoInstructions } from "../../apps/server/src/meetings/puckoInstructions.ts";
+import {
+  MeetingController,
+  type MeetingState,
+} from "../../packages/client-runtime/src/meetings/controller.ts";
+import type { MeetingExperimentResult } from "@t3tools/contracts";
 import { cases } from "./cases.ts";
 
 type Track = { stop(): void };
@@ -48,6 +53,7 @@ const { values } = NodeUtil.parseArgs({
     samples: { type: "string", default: "3" },
     baseline: { type: "string" },
     "webrtc-module": { type: "string" },
+    controller: { type: "boolean", default: false },
   },
 });
 if (!values.out || !values["webrtc-module"])
@@ -101,7 +107,9 @@ async function speech(text: string) {
 }
 async function run(entry: (typeof cases)[number]) {
   const audio: number[] = [];
+  const clipStarts: number[] = [];
   for (const text of entry.clips) {
+    clipStarts.push(audio.length / 48);
     const pcm = await speech(text);
     for (const value of pcm) audio.push(value, value);
     audio.push(...new Array<number>(72000).fill(0));
@@ -118,7 +126,23 @@ async function run(entry: (typeof cases)[number]) {
     output = "",
     audibleSamples = 0,
     delegations = 0,
-    closed = false;
+    closed = false,
+    playback = false,
+    volume = 0.8,
+    playedSamples = 0,
+    inputActive = false,
+    outputActive = false,
+    inputQuiet = 0,
+    outputQuiet = 0;
+  let firstPlayedInputMs: number | null = null;
+  let controller: MeetingController | undefined;
+  let controllerState: MeetingState | undefined;
+  const requests: string[] = [];
+  const trace: Record<string, unknown>[] = [];
+  const record = (event: Record<string, unknown>) => {
+    if (values.controller && trace.length < 400) trace.push({ inputMs: cursor / 48, ...event });
+  };
+  let eventNumber = 0;
   const types = new Set<string>();
   let started!: () => void, finalized!: () => void;
   const startup = new Promise<void>((yes) => {
@@ -130,6 +154,8 @@ async function run(entry: (typeof cases)[number]) {
   channel.onmessage = ({ data }) => {
     const event = JSON.parse(data) as { type: string; delta?: string; delegation?: { id: string } };
     types.add(event.type);
+    if (event.type.includes("transcript")) record(event);
+    else if (event.type !== "session.usage.updated") record({ type: event.type });
     if (event.type === "session.started") {
       playing = true;
       started();
@@ -138,24 +164,49 @@ async function run(entry: (typeof cases)[number]) {
     if (event.type === "session.output_transcript.delta") output += event.delta ?? "";
     if (event.type === "session.delegation.created") {
       delegations++;
-      channel.send(
-        JSON.stringify({
-          type: "session.thinking.append",
-          event_id: `suppress-${delegations}`,
-          delegation_id: event.delegation?.id,
-          content: "",
-        }),
-      );
+      if (!controller)
+        channel.send(
+          JSON.stringify({
+            type: "session.thinking.append",
+            event_id: `suppress-${delegations}`,
+            delegation_id: event.delegation?.id,
+            content: "",
+          }),
+        );
     }
     if (event.type === "session.closed") {
       closed = true;
       finalized();
     }
+    controller?.receive(event);
   };
   peer.ontrack = ({ track: remote }) => {
     sink = new native.nonstandard.RTCAudioSink(remote);
     sink.ondata = ({ samples }) => {
       if (samples.some((value) => Math.abs(value) > 100)) audibleSamples += samples.length;
+      if (!controller) return;
+      const rms = Math.sqrt(
+        samples.reduce((sum, value) => sum + (value / 32768) ** 2, 0) / samples.length,
+      );
+      if (rms > 0.006 && !outputActive) {
+        outputActive = true;
+        record({ type: "device.output-start", playback });
+      }
+      outputQuiet = rms > 0.006 ? 0 : outputQuiet + 1;
+      if (outputActive && outputQuiet >= 60) {
+        outputActive = false;
+        record({ type: "device.output-end", playback });
+        controller.receive({ type: "device.output-end" });
+      }
+      if (playback && volume > 0 && rms > 0.006) {
+        firstPlayedInputMs ??= cursor / 48;
+        playedSamples += samples.length;
+      }
+      controller.receive({
+        type: "device.audio",
+        outputActive,
+        level: playback ? Math.min(1, rms * volume * 8) : 0,
+      });
     };
   };
   const timer = setInterval(() => {
@@ -163,6 +214,22 @@ async function run(entry: (typeof cases)[number]) {
     if (playing)
       for (let i = 0; i < samples.length && cursor < audio.length; i++)
         samples[i] = audio[cursor++]!;
+    if (controller) {
+      const rms = Math.sqrt(
+        samples.reduce((sum, value) => sum + (value / 32768) ** 2, 0) / samples.length,
+      );
+      if (rms > 0.018 && !inputActive) {
+        inputActive = true;
+        record({ type: "device.input-start" });
+        controller.receive({ type: "device.input-start" });
+      }
+      inputQuiet = rms > 0.018 ? 0 : inputQuiet + 1;
+      if (inputActive && inputQuiet >= 60) {
+        inputActive = false;
+        record({ type: "device.input-end" });
+        controller.receive({ type: "device.input-end" });
+      }
+    }
     source.onData({
       samples,
       sampleRate: 48000,
@@ -197,11 +264,73 @@ async function run(entry: (typeof cases)[number]) {
       }),
     });
     if (!response.ok) throw new Error(`GPT-Live HTTP ${response.status}`);
-    const answer = (await response.json()) as { transport: { sdp: string } };
-    await peer.setRemoteDescription({ type: "answer", sdp: answer.transport.sdp });
+    const answer = (await response.json()) as {
+      session: { id: string };
+      transport: { sdp: string };
+    };
+    if (values.controller) {
+      const result: MeetingExperimentResult = {
+        id: "voice-eval",
+        title: "Synthetic voice fixture",
+        threadId: null,
+        sessionId: answer.session.id,
+        sdp: answer.transport.sdp,
+        closed: false,
+        interrupted: false,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        endedAt: null,
+        activationName: "Citrus",
+        summary: "",
+        summaryPageId: null,
+        requests: [],
+        tasks: [],
+      };
+      controller = new MeetingController(
+        result.id,
+        {
+          offer: async () => peer.localDescription.sdp,
+          accept: (sdp) => peer.setRemoteDescription({ type: "answer", sdp }),
+          stopCapture: () => {
+            playing = false;
+          },
+          unmute: async () => {
+            playing = true;
+          },
+          setPlayback: (enabled) => {
+            playback = enabled;
+            record({ type: "playback", enabled });
+          },
+          setVolume: (value) => {
+            volume = value;
+          },
+          resumePlayback: async () => {},
+          send: (event) => channel.send(JSON.stringify(event)),
+          close: async () => {
+            if (!closed && channel.readyState === "open") {
+              channel.send(JSON.stringify({ type: "session.close" }));
+              await deadline(closure, 5000);
+            }
+            return closed;
+          },
+        },
+        async (command) => {
+          if (command.action === "invite") {
+            requests.push(command.request);
+            throw new Error("The voice fixture records handoffs but does not execute Bara tasks.");
+          }
+          return result;
+        },
+        (state) => {
+          controllerState = state;
+        },
+        () => `voice-eval-${++eventNumber}`,
+      );
+      await controller.start(true);
+    } else await peer.setRemoteDescription({ type: "answer", sdp: answer.transport.sdp });
     await deadline(startup, 15000);
     await wait(audio.length / 48 + 9000);
-    channel.send(JSON.stringify({ type: "session.close" }));
+    if (controller) await controller.end();
+    else channel.send(JSON.stringify({ type: "session.close" }));
     await deadline(closure, 5000);
     return {
       id: entry.id,
@@ -209,21 +338,38 @@ async function run(entry: (typeof cases)[number]) {
       input,
       output,
       audibleSamples,
+      ...(controller
+        ? {
+            playedSamples,
+            firstPlayedInputMs,
+            requests,
+            controllerTranscript: controllerState?.transcript,
+            controllerError: controllerState?.error,
+            diagnostics: controllerState?.diagnostics,
+            trace,
+          }
+        : {}),
       delegations,
       closed,
       types: [...types],
       signalPass:
         Boolean(input.trim()) &&
         closed &&
+        (!("waitForLastClip" in entry) ||
+          !controller ||
+          (firstPlayedInputMs !== null && firstPlayedInputMs >= clipStarts.at(-1)!)) &&
         ("delegation" in entry && entry.delegation
-          ? delegations > 0
+          ? delegations > 0 && (!controller || requests.length === 1)
           : delegations === 0 &&
             (entry.reply
-              ? Boolean(output.trim()) && audibleSamples > 0
-              : !output.trim() && audibleSamples === 0)),
+              ? Boolean(output.trim()) && (controller ? playedSamples : audibleSamples) > 0
+              : controller
+                ? playedSamples === 0
+                : !output.trim() && audibleSamples === 0)),
     };
   } finally {
     clearInterval(timer);
+    controller?.dispose();
     sink?.stop();
     track.stop();
     channel.close();

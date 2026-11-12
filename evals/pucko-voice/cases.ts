@@ -27,6 +27,24 @@ export const cases = [
     reply: false,
   },
   {
+    id: "wake-pause",
+    source:
+      "Pucko voice tracing: an acoustic pause split the activation name or separated it from the request.",
+    clips: ["Citrus", "Can you hear me?"],
+    expectation:
+      "Wait for the complete question after the activation name, then give an audible reply without delegating.",
+    reply: true,
+    waitForLastClip: true,
+  },
+  {
+    id: "clarification",
+    source:
+      "Pucko 0.1.16: an ambiguous report request became a Work turn instead of a spoken clarification.",
+    clips: ["Citrus, could you pull up that report?"],
+    expectation: "Ask which report in a short audible reply; do not delegate an unidentified task.",
+    reply: true,
+  },
+  {
     id: "delegate",
     source:
       "Pucko rebuild: addressed research must hand off to Bara instead of inventing work or results.",

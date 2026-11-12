@@ -13,6 +13,13 @@ and research requests emit delegation. The native sink counts raw received audio
 a delegation acknowledgement can race server suppression. The controller regression
 test checks that speaker playback stays closed until Bara accepts the request.
 
+Add `--controller` to pass actual model events and native PCM activity through the
+production meeting controller. The report then records `playedSamples` after its
+playback gate and the requests it tried to hand off. This uses a native audio sink,
+not the browser player or physical speakers. Handoffs are recorded and rejected;
+the fixture never starts a Bara agent or claims real task acceptance. Local
+transcript persistence and notes use fixture receipts, not a live database.
+
 Install the optional native test adapter outside the checkout; it is not a Bara
 runtime dependency:
 

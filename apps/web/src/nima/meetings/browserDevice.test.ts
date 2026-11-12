@@ -42,8 +42,22 @@ function fixture() {
     }
   }
   const meters: Meter[] = [];
-  const gain = Object.assign(new Node(), { gain: { value: 1 } });
-  const destination = {};
+  const player = {
+    autoplay: false,
+    muted: false,
+    volume: 1,
+    paused: true,
+    srcObject: null as unknown,
+    play: vi.fn(async () => {
+      player.paused = false;
+    }),
+    pause: vi.fn(() => {
+      player.paused = true;
+    }),
+  };
+  vi.stubGlobal("Audio", function Audio() {
+    return player;
+  });
   const closeContext = vi.fn(async () => {});
   vi.stubGlobal(
     "RTCPeerConnection",
@@ -71,7 +85,6 @@ function fixture() {
     "AudioContext",
     class {
       state = "running";
-      destination = destination;
       resume = vi.fn(async () => {});
       close = closeContext;
       createMediaStreamSource = () => new Node();
@@ -80,7 +93,6 @@ function fixture() {
         meters.push(meter);
         return meter;
       };
-      createGain = () => gain;
     },
   );
   const device = new BrowserMeetingDevice();
@@ -93,8 +105,7 @@ function fixture() {
     getUserMedia,
     replaceTrack,
     meters,
-    gain,
-    destination,
+    player,
     closeContext,
     device,
     [Symbol.dispose]() {
@@ -137,11 +148,13 @@ it("routes addressed audio to speakers, meters actual output, reacquires muted c
   f.peers[0]?.dispatchEvent(
     Object.assign(new Event("track"), { track: { kind: "audio", stop: vi.fn() } }),
   );
-  expect(f.gain.connect).toHaveBeenCalledWith(f.destination);
-  expect(f.gain.gain.value).toBe(0);
+  expect(f.player.srcObject).not.toBeNull();
+  expect(f.player.muted).toBe(true);
   f.device.setPlayback(true);
   f.device.setVolume(0.5);
-  expect(f.gain.gain.value).toBe(0.5);
+  expect(f.player.muted).toBe(false);
+  expect(f.player.volume).toBe(0.5);
+  await f.device.resumePlayback();
   f.meters[1]!.value = 0.1;
   vi.advanceTimersByTime(50);
   expect(updates).toHaveBeenCalledWith(
@@ -175,4 +188,35 @@ it("routes addressed audio to speakers, meters actual output, reacquires muted c
   expect(await closed).toBe(true);
   expect(f.peers[0]?.close).toHaveBeenCalledOnce();
   expect(f.closeContext).toHaveBeenCalledOnce();
+  expect(f.player.pause).toHaveBeenCalled();
+  expect(f.player.srcObject).toBeNull();
+});
+
+it("reports blocked speaker playback and recovers without granting a new reply", async () => {
+  using f = fixture();
+  const updates = vi.fn();
+  const offered = f.device.offer(
+    updates,
+    () => {},
+    new AbortController().signal,
+    () => {},
+  );
+  f.resolve(f.stream);
+  await offered;
+  let blocked!: () => void;
+  const failure = new Promise<void>((resolve) => {
+    blocked = resolve;
+  });
+  updates.mockImplementation((event: { type: string }) => {
+    if (event.type === "device.playback-blocked") blocked();
+  });
+  f.player.play.mockRejectedValueOnce(new Error("NotAllowedError"));
+  f.peers[0]?.dispatchEvent(
+    Object.assign(new Event("track"), { track: { kind: "audio", stop: vi.fn() } }),
+  );
+  await failure;
+  expect(f.player.muted).toBe(true);
+  await f.device.resumePlayback();
+  expect(f.player.muted).toBe(true);
+  expect(updates).toHaveBeenLastCalledWith({ type: "device.playback-ready" });
 });

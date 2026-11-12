@@ -41,6 +41,11 @@ separately owned engines from 0.1.8 without checking private Rust source into th
 repository. Publish both platforms together: a desktop version must never request
 an SSH archive absent from its release.
 
+For a test build, create a draft marked **prerelease** for the version tag before
+the build finishes. The workflow uploads and verifies the same artifacts, then
+publishes it without replacing the stable update feed. Install its executable
+manually to test it.
+
 Windows release builds are currently unsigned. Do not disable updater checks or
 change the app ID or data paths to work around installation problems. A future
 signing certificate must keep the same application identity and update feed.

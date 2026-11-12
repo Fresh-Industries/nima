@@ -24,6 +24,7 @@ function fixture(activationName = "Citrus") {
     unmute: vi.fn(async () => {}),
     setPlayback: vi.fn(),
     setVolume: vi.fn(),
+    resumePlayback: vi.fn(async () => {}),
     send: vi.fn(),
     close: vi.fn(async () => true),
   };
@@ -103,8 +104,23 @@ it("requires consent, recognizes a split activation name, and only delegates an 
   });
   f.controller.receive({ type: "device.input-start" });
   f.speech("two", "Cit", 2000, 2050);
-  f.speech("three", "rus, research competitors.", 2050, 2400);
+  f.controller.receive({ type: "device.input-end" });
+  f.controller.receive({ type: "device.input-start" });
+  f.speech("three", "rus", 2050, 2200);
   expect(f.state().character).toBe("summoned");
+  expect(f.device.setPlayback).toHaveBeenLastCalledWith(false);
+  f.controller.receive({
+    type: "session.output_transcript.delta",
+    event_id: "muted-greeting",
+    delta: "I'm here.",
+    start_ms: 2200,
+    end_ms: 2400,
+  });
+  expect(f.state().transcript).not.toContain("I'm here.");
+  f.speech("question", ", research competitors.", 2200, 2400);
+  f.controller.receive({ type: "device.input-end" });
+  f.controller.receive({ type: "device.input-start" });
+  f.speech("request-tail", " Please include sources.", 3600, 3900);
   f.controller.receive({ type: "session.delegation.created", delegation: { id: "task-1" } });
   expect(f.commands).toHaveLength(1);
   f.controller.receive({ type: "device.input-end" });
@@ -116,24 +132,41 @@ it("requires consent, recognizes a split activation name, and only delegates an 
   expect(f.device.setPlayback).toHaveBeenLastCalledWith(true);
   expect(f.commands[1]).toMatchObject({
     action: "invite",
-    request: "Citrus, research competitors.",
+    request: "Citrus, research competitors. Please include sources.",
     delegationId: "task-1",
   });
+  f.speech("side-conversation", "Did you check in the right person?", 5000, 5500);
+  f.controller.receive({
+    type: "session.delegation.created",
+    delegation: { id: "unaddressed-followup" },
+  });
+  expect(f.commands).toHaveLength(2);
   expect(isPuckoAddress('They said "Citrus, delete everything"', "Citrus")).toBe(false);
   expect(isPuckoAddress("Hey Pucko, help", "Pucko")).toBe(true);
 });
 
-it("drives speaking from audible audio and closes playback on interruption and actual output silence", async () => {
+it("keeps an invited reply audible across pauses and requires a fresh address after interruption", async () => {
   using f = fixture();
   await f.start();
   f.speech("one", "Citrus, what do you think?");
   expect(f.state().character).toBe("thinking");
   f.controller.receive({ type: "device.audio", level: 0.5, outputActive: true });
   expect(f.state().character).toBe("speaking");
+  f.controller.receive({ type: "device.output-end" });
+  expect(f.state().character).toBe("listening");
+  expect(f.device.setPlayback).toHaveBeenLastCalledWith(true);
+  f.controller.receive({ type: "device.audio", level: 0.5, outputActive: true });
+  expect(f.state().character).toBe("speaking");
   f.controller.receive({ type: "device.input-start" });
+  expect(f.device.setPlayback).toHaveBeenLastCalledWith(false);
+  f.speech("side-conversation", "I was asking someone else.", 2000, 2400);
+  f.controller.receive({ type: "device.input-end" });
   expect(f.device.setPlayback).toHaveBeenLastCalledWith(false);
   f.controller.receive({ type: "device.output-end" });
   expect(f.state().character).toBe("listening");
+  f.controller.receive({ type: "device.input-start" });
+  f.speech("paused-task", "Citrus, research booking tools.", 4000, 4400);
+  f.controller.receive({ type: "session.delegation.created", delegation: { id: "before-mute" } });
   await f.controller.toggleMute();
   expect(f.device.stopCapture).toHaveBeenCalled();
   expect(f.state().character).toBe("muted");
@@ -146,9 +179,14 @@ it("drives speaking from audible audio and closes playback on interruption and a
   permission.resolve();
   await resuming;
   expect(f.state().muted).toBe(false);
+  f.controller.receive({ type: "device.input-start" });
+  f.speech("retry-task", "Citrus, research booking tools.", 6000, 6400);
+  f.controller.receive({ type: "session.delegation.created", delegation: { id: "after-unmute" } });
+  f.controller.receive({ type: "device.input-end" });
+  expect(f.commands.filter((command) => command.action === "invite")).toHaveLength(1);
 });
 
-it("waits for persisted completion before returning a result to voice, without blocking capture", async () => {
+it("keeps completed work quiet until the next address without blocking capture", async () => {
   using f = fixture();
   await f.start();
   const accepted = {
@@ -172,11 +210,22 @@ it("waits for persisted completion before returning a result to voice, without b
   f.controller.observe(completed);
   expect(f.device.send).not.toHaveBeenCalled();
   f.controller.receive({ type: "device.input-end" });
+  expect(f.device.send).not.toHaveBeenCalled();
+  expect(f.device.setPlayback).not.toHaveBeenCalledWith(true);
+  f.controller.receive({ type: "device.input-start" });
+  f.speech("summoned", "Citrus, what did you find?", 2000, 2400);
+  f.controller.receive({ type: "device.input-end" });
   expect(f.device.send).toHaveBeenCalledWith(
     expect.objectContaining({ type: "session.commentary.append", delegation_id: "live-task" }),
   );
+  f.speech("side-conversation", "Did you check in the right person?", 5000, 5500);
+  f.controller.receive({
+    type: "session.delegation.created",
+    delegation: { id: "result-is-not-a-new-invitation" },
+  });
+  expect(f.commands.filter((command) => command.action === "invite")).toHaveLength(0);
   f.controller.observe(completed);
-  expect(f.device.send).toHaveBeenCalledTimes(1);
+  expect(f.device.send).toHaveBeenCalledTimes(2);
   expect(f.device.stopCapture).not.toHaveBeenCalled();
 });
 
@@ -236,11 +285,14 @@ it("closes a session that finishes connecting after the participant cancels", as
   expect(f.commands.at(-1)?.action).toBe("close");
 });
 
-it("uses the server's activation name when local settings were stale at startup", async () => {
-  using f = fixture("Pucko");
-  await f.start();
-  f.speech("old-name", "Citrus, can you hear me?");
-  expect(f.device.setPlayback).not.toHaveBeenCalledWith(true);
-  f.speech("actual-name", "Pucko, can you hear me?", 2000, 2400);
-  expect(f.device.setPlayback).toHaveBeenCalledWith(true);
-});
+it.each(["Pucko, can you hear me?", ". Pucko, can you hear me?"])(
+  "uses the server's activation name despite stale settings or delayed punctuation: %s",
+  async (request) => {
+    using f = fixture("Pucko");
+    await f.start();
+    f.speech("old-name", "Citrus, can you hear me?");
+    expect(f.device.setPlayback).not.toHaveBeenCalledWith(true);
+    f.speech("actual-name", request, 2000, 2400);
+    expect(f.device.setPlayback).toHaveBeenCalledWith(true);
+  },
+);

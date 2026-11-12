@@ -197,6 +197,15 @@ export function PuckoApp() {
             />
           </label>
         )}
+        {state.phase === "listening" && state.playbackError && (
+          <div className="mt-4 max-w-md text-sm" role="alert">
+            <p className="text-destructive">{state.playbackError}</p>
+            <Button variant="outline" onClick={() => void host.controller?.resumeSpeaker()}>
+              <Volume2 size={16} />
+              Enable speaker
+            </Button>
+          </div>
+        )}
         {!active && connected && !supportsPucko && (
           <p className="mt-4 text-sm text-muted-foreground">
             Update Bara on {environment?.label} to use Pucko.

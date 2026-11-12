@@ -7,10 +7,11 @@ export class BrowserMeetingDevice implements MeetingDevice {
   private sender: RTCRtpSender | null = null;
   private events: RTCDataChannel | null = null;
   private context: AudioContext | null = null;
-  private gain: GainNode | null = null;
+  private player: HTMLAudioElement | null = null;
   private inputSource: MediaStreamAudioSourceNode | null = null;
   private inputMeter: AnalyserNode | null = null;
   private outputMeter: AnalyserNode | null = null;
+  private outputSource: MediaStreamAudioSourceNode | null = null;
   private sampler: ReturnType<typeof setInterval> | undefined;
   private startupTimeout: ReturnType<typeof setTimeout> | undefined;
   private volume = 0.8;
@@ -49,6 +50,10 @@ export class BrowserMeetingDevice implements MeetingDevice {
       );
     const peer = new RTCPeerConnection();
     this.peer = peer;
+    this.player = new Audio();
+    this.player.autoplay = true;
+    this.player.muted = true;
+    this.player.volume = this.volume;
     this.context = new AudioContext();
     await this.context.resume();
     onStage("Waiting for microphone permission");
@@ -61,11 +66,11 @@ export class BrowserMeetingDevice implements MeetingDevice {
       this.output = new MediaStream([track]);
       this.outputMeter = this.context.createAnalyser();
       this.outputMeter.fftSize = 1024;
-      this.gain = this.context.createGain();
-      this.context.createMediaStreamSource(this.output).connect(this.outputMeter);
-      this.outputMeter.connect(this.gain);
-      this.gain.connect(this.context.destination);
+      this.outputSource = this.context.createMediaStreamSource(this.output);
+      this.outputSource.connect(this.outputMeter);
+      if (this.player) this.player.srcObject = this.output;
       this.setPlayback(this.playback);
+      this.startPlayer();
       onStage("Speaker audio connected");
     });
     peer.addEventListener("connectionstatechange", () => {
@@ -190,7 +195,10 @@ export class BrowserMeetingDevice implements MeetingDevice {
         outputActive = false;
         this.onEvent({ type: "device.output-end" });
       }
-      const level = this.playback ? Math.min(1, outgoing * this.volume * 8) : 0;
+      const level =
+        this.playback && this.player && !this.player.paused && !this.player.muted
+          ? Math.min(1, outgoing * this.volume * 8)
+          : 0;
       if (
         Math.abs(level - lastLevel) > 0.035 ||
         wasOutput !== outputActive ||
@@ -236,12 +244,28 @@ export class BrowserMeetingDevice implements MeetingDevice {
     }
   }
   setPlayback(enabled: boolean) {
+    const opening = enabled && !this.playback;
     this.playback = enabled;
-    if (this.gain) this.gain.gain.value = enabled ? this.volume : 0;
+    if (this.player) this.player.muted = !enabled;
+    if (opening && this.player?.srcObject) this.startPlayer();
   }
   setVolume(volume: number) {
     this.volume = volume;
-    this.setPlayback(this.playback);
+    if (this.player) this.player.volume = volume;
+  }
+  async resumePlayback() {
+    if (!this.player?.srcObject || this.closingRequested)
+      throw new Error("The speaker stream is not connected.");
+    await this.player.play();
+    if (!this.closingRequested) {
+      if (this.context?.state === "suspended") void this.context.resume().catch(() => {});
+      this.onEvent({ type: "device.playback-ready" });
+    }
+  }
+  private startPlayer() {
+    void this.resumePlayback().catch(() => {
+      if (!this.closingRequested) this.onEvent({ type: "device.playback-blocked" });
+    });
   }
   send(event: Record<string, unknown>) {
     if (this.events?.readyState === "open") this.events.send(JSON.stringify(event));
@@ -252,6 +276,8 @@ export class BrowserMeetingDevice implements MeetingDevice {
     clearInterval(this.sampler);
     if (this.closing) return this.closing;
     this.closingRequested = true;
+    this.player?.pause();
+    if (this.player) this.player.srcObject = null;
     this.closing = new Promise<boolean>((resolve) => {
       let timeout: ReturnType<typeof setTimeout> | undefined;
       let settled = false;
@@ -263,7 +289,7 @@ export class BrowserMeetingDevice implements MeetingDevice {
         this.peer?.close();
         this.output?.getTracks().forEach((track) => track.stop());
         this.output = null;
-        this.gain?.disconnect();
+        this.outputSource?.disconnect();
         this.outputMeter?.disconnect();
         if (this.context && this.context.state !== "closed")
           void this.context.close().catch(() => {});

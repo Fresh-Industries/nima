@@ -18,6 +18,7 @@ export interface MeetingDevice {
   unmute(signal: AbortSignal): Promise<void>;
   setPlayback(enabled: boolean): void;
   setVolume(volume: number): void;
+  resumePlayback(): Promise<void>;
   send(event: Record<string, unknown>): void;
   close(): Promise<boolean>;
 }
@@ -37,6 +38,7 @@ export type MeetingState = {
   transcript: string;
   candidate: string;
   error: string;
+  playbackError: string;
   muted: boolean;
   volume: number;
   outputLevel: number;
@@ -50,6 +52,7 @@ export const initialMeetingState: MeetingState = {
   transcript: "",
   candidate: "",
   error: "",
+  playbackError: "",
   muted: false,
   volume: 0.8,
   outputLevel: 0,
@@ -57,11 +60,16 @@ export const initialMeetingState: MeetingState = {
   diagnostics: [],
 };
 
-export function isPuckoAddress(text: string, activationName: string) {
+function addressedRequest(text: string, activationName: string) {
   const escaped = activationName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`^\\s*(?:(?:hey|hi|okay|ok)[,\\s]+)?${escaped}(?=$|[\\s,.!?])`, "iu").test(
-    text,
-  );
+  const prefix = new RegExp(
+    `^[\\s.!?,;:…]*(?:(?:hey|hi|okay|ok)[,\\s]+)?${escaped}(?=$|[\\s,.!?])`,
+    "iu",
+  ).exec(text);
+  return prefix ? text.slice(prefix[0].length) : null;
+}
+export function isPuckoAddress(text: string, activationName: string) {
+  return addressedRequest(text, activationName) !== null;
 }
 
 export class MeetingController {
@@ -73,9 +81,14 @@ export class MeetingController {
   private addressed = false;
   private inputActive = false;
   private outputActive = false;
+  private replyStarted = false;
+  private receivedAudio = false;
+  private playedAudio = false;
   private resuming = false;
   private waitingForAcceptance = false;
-  private utteranceDelegated = false;
+  private utteranceAddressed = false;
+  private requestReady = false;
+  private requestConsumed = false;
   private pendingDelegations = new Set<string>();
   private handledDelegations = new Set<string>();
   private delivered = new Set<string>();
@@ -139,8 +152,8 @@ export class MeetingController {
             !this.waitingForAcceptance &&
             this.state.volume > 0
           ? "speaking"
-          : this.addressed
-            ? this.inputActive
+          : this.addressed && !this.replyStarted
+            ? this.inputActive || !this.requestReady
               ? "summoned"
               : "thinking"
             : working
@@ -193,21 +206,43 @@ export class MeetingController {
     }
   }
   private invite() {
-    if (this.addressed || this.state.muted) return;
+    if (this.state.muted) return;
+    if (this.addressed) {
+      if (this.requestReady && !this.waitingForAcceptance) this.device.setPlayback(true);
+      return;
+    }
     this.addressed = true;
-    this.device.setPlayback(true);
+    this.replyStarted = false;
+    this.stage(
+      this.requestReady
+        ? "Activation detected; reply playback enabled"
+        : "Activation detected; waiting for the request",
+    );
+    this.device.setPlayback(this.requestReady);
     clearTimeout(this.responseDeadline);
     // A response deadline releases an unanswered invitation; it never fabricates completion.
     this.responseDeadline = setTimeout(() => {
-      if (!this.addressed || this.outputActive) return;
-      this.addressed = false;
-      this.device.setPlayback(false);
-      this.fail(
-        new Error("Pucko did not answer. Try addressing him again, or check voice diagnostics."),
-      );
+      if (!this.addressed || this.replyStarted) return;
+      const requested = this.requestReady;
+      this.quiet();
+      if (requested)
+        this.fail(
+          new Error("Pucko did not answer. Try addressing him again, or check voice diagnostics."),
+        );
       this.character();
     }, 30000);
     this.character();
+  }
+  private quiet() {
+    this.addressed = false;
+    this.replyStarted = false;
+    this.requestReady = false;
+    clearTimeout(this.responseDeadline);
+    this.device.setPlayback(false);
+    this.update({ outputLevel: 0 });
+  }
+  private awaitingRequest() {
+    return this.addressed && !this.replyStarted && !this.requestConsumed;
   }
   receive(raw: unknown) {
     if (this.abort.signal.aborted || this.disposed || typeof raw !== "object" || raw === null)
@@ -231,8 +266,32 @@ export class MeetingController {
     }
     if (event.type === "device.audio") {
       this.outputActive = event.outputActive === true;
+      if (this.outputActive && !this.receivedAudio) {
+        this.receivedAudio = true;
+        this.stage("Incoming voice audio detected");
+      }
+      if (this.addressed && typeof event.level === "number" && event.level > 0.01) {
+        this.replyStarted = true;
+        clearTimeout(this.responseDeadline);
+        if (!this.playedAudio) {
+          this.playedAudio = true;
+          this.stage("Voice audio reached the speaker player");
+        }
+      }
       this.update({ outputLevel: typeof event.level === "number" ? event.level : 0 });
       this.character();
+      return;
+    }
+    if (event.type === "device.playback-blocked") {
+      this.update({
+        playbackError: "Speaker playback is blocked. Select Enable speaker to retry.",
+      });
+      this.stage("Speaker playback blocked");
+      return;
+    }
+    if (event.type === "device.playback-ready") {
+      this.update({ playbackError: "" });
+      this.stage("Speaker player ready");
       return;
     }
     if (event.type === "device.input-start") {
@@ -247,12 +306,26 @@ export class MeetingController {
             "A participant interrupted. Stop the current reply and listen to the complete correction before responding.",
         });
       }
+      if (!this.awaitingRequest()) {
+        const answered = this.replyStarted || this.requestConsumed;
+        this.quiet();
+        // Acoustic boundaries can arrive between two transcript fragments of the wake name.
+        if (answered) {
+          this.utterance = "";
+          this.utteranceAddressed = false;
+          this.requestConsumed = false;
+        }
+        if (this.pendingDelegations.size) {
+          this.pendingDelegations.clear();
+          this.waitingForAcceptance = false;
+        }
+      }
       this.character();
       return;
     }
     if (event.type === "device.input-end") {
       this.inputActive = false;
-      if (this.addressed && !this.state.muted && !this.waitingForAcceptance)
+      if (this.addressed && this.requestReady && !this.state.muted && !this.waitingForAcceptance)
         this.device.setPlayback(true);
       this.flushDelegations();
       this.deliverAnswers();
@@ -261,9 +334,7 @@ export class MeetingController {
     }
     if (event.type === "device.output-end") {
       this.outputActive = false;
-      this.addressed = false;
-      clearTimeout(this.responseDeadline);
-      this.device.setPlayback(false);
+      // GPT-Live pauses are not response-completion events; the next input revokes playback.
       this.update({ outputLevel: 0 });
       this.deliverAnswers();
       this.character();
@@ -286,7 +357,13 @@ export class MeetingController {
         delegation_id: id,
         content: "",
       });
-      if (this.addressed && !this.utteranceDelegated && !this.waitingForAcceptance) {
+      if (
+        this.addressed &&
+        this.utteranceAddressed &&
+        this.requestReady &&
+        !this.requestConsumed &&
+        !this.waitingForAcceptance
+      ) {
         this.waitingForAcceptance = true;
         this.device.setPlayback(false);
         this.update({ outputLevel: 0 });
@@ -311,7 +388,7 @@ export class MeetingController {
     this.events.add(event.event_id);
     if (this.events.size > 20000) this.events.delete(this.events.values().next().value!);
     const input = event.type === "session.input_transcript.delta";
-    if (!input && (!this.addressed || this.waitingForAcceptance)) return;
+    if (!input && (!this.addressed || !this.requestReady || this.waitingForAcceptance)) return;
     const speaker = input ? "Participants" : "Pucko";
     const prefix = this.lastSpeaker === speaker ? "" : `\n${speaker}: `;
     this.lastSpeaker = speaker;
@@ -322,23 +399,31 @@ export class MeetingController {
     this.update({ transcript });
     this.scheduleCheckpoint();
     if (input && !this.state.muted) {
-      if (event.start_ms - this.lastInputEnd > 1000) {
+      if (event.start_ms - this.lastInputEnd > 1000 && !this.awaitingRequest()) {
+        this.quiet();
         this.utterance = "";
-        this.utteranceDelegated = false;
+        this.utteranceAddressed = false;
+        this.requestConsumed = false;
       }
       this.lastInputEnd = event.end_ms;
       this.utterance = (this.utterance + event.delta).slice(-4000);
       this.update({ candidate: this.utterance });
-      if (isPuckoAddress(this.utterance, this.activationName)) this.invite();
+      const request = addressedRequest(this.utterance, this.activationName);
+      this.utteranceAddressed = request !== null;
+      const ready = request !== null && /[\p{L}\p{N}]/u.test(request);
+      if (!this.requestReady && ready) this.addressed = false;
+      this.requestReady = ready;
+      if (this.utteranceAddressed) this.invite();
       this.flushDelegations();
     }
   }
   private flushDelegations() {
-    if (this.inputActive || !this.addressed || !this.utterance.trim()) return;
+    if (this.inputActive || !this.addressed || !this.utteranceAddressed || !this.utterance.trim())
+      return;
     for (const delegationId of this.pendingDelegations) {
       this.pendingDelegations.delete(delegationId);
       this.handledDelegations.add(delegationId);
-      this.utteranceDelegated = true;
+      this.requestConsumed = true;
       void this.submit(this.utterance, delegationId);
     }
   }
@@ -434,6 +519,10 @@ export class MeetingController {
     if (
       this.state.phase !== "listening" ||
       this.state.muted ||
+      !this.addressed ||
+      !this.utteranceAddressed ||
+      !this.requestReady ||
+      this.replyStarted ||
       this.inputActive ||
       this.waitingForAcceptance ||
       this.outputActive
@@ -445,6 +534,7 @@ export class MeetingController {
     const answer = results.map((entry) => entry.answer.slice(0, 1400 / results.length)).join("\n");
     this.addressed = false;
     this.invite();
+    this.requestConsumed = true;
     this.device.send({
       type: "session.commentary.append",
       event_id: this.newId(),
@@ -458,15 +548,26 @@ export class MeetingController {
     this.update({ volume: value });
     this.character();
   }
+  async resumeSpeaker() {
+    if (this.state.phase !== "listening") return;
+    try {
+      await this.device.resumePlayback();
+    } catch {
+      this.update({
+        playbackError: "Speaker playback could not start. Check the sound output and retry.",
+      });
+    }
+  }
   async toggleMute() {
     if (this.state.phase !== "listening" || this.resuming) return;
     if (!this.state.muted) {
       this.device.stopCapture();
-      this.device.setPlayback(false);
-      this.addressed = false;
+      this.quiet();
+      if (this.pendingDelegations.size) this.waitingForAcceptance = false;
       this.pendingDelegations.clear();
       this.inputActive = false;
       this.utterance = "";
+      this.utteranceAddressed = false;
       this.update({ muted: true, character: "muted", outputLevel: 0 });
     } else {
       this.resuming = true;
