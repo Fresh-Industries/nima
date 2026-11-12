@@ -204,6 +204,17 @@ it.effect(
           },
         ],
       };
+      projection = {
+        ...projection,
+        messages: [
+          {
+            ...projection.messages[0]!,
+            id: MessageId.make("progress"),
+            text: "Preparing the notes now.",
+          },
+          ...projection.messages,
+        ],
+      };
       const at = "2026-11-12T00:00:00.000Z";
       yield* sql`INSERT INTO orchestration_v2_projection_threads(thread_id,project_id,title,default_provider,runtime_mode,interaction_mode,created_at,updated_at,payload_json) VALUES(${threadId},'project','Meeting','devReplay','full-access','default',${at},${at},'{}')`;
       yield* sql`INSERT INTO orchestration_v2_projection_runs(run_id,thread_id,ordinal,provider,status,requested_at,completed_at,payload_json) VALUES(${runId},${threadId},1,'devReplay','completed',${at},${at},'{}')`;

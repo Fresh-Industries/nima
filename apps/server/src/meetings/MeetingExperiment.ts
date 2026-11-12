@@ -120,13 +120,10 @@ const make = Effect.gen(function* () {
       const run = projection?.runs.find((entry) => entry.userMessageId === request.messageId);
       const answer =
         run?.status === "completed"
-          ? (projection?.messages
-              .filter(
-                (message) =>
-                  message.runId === run.id && message.role === "assistant" && !message.streaming,
-              )
-              .map((message) => message.text)
-              .join("\n\n") ?? "")
+          ? (projection?.messages.findLast(
+              (message) =>
+                message.runId === run.id && message.role === "assistant" && !message.streaming,
+            )?.text ?? "")
           : "";
       return {
         requestId: request.requestId,
@@ -162,13 +159,11 @@ const make = Effect.gen(function* () {
             status: task.status,
             answer:
               child?.messages
-                .filter(
+                .findLast(
                   (message) =>
                     message.runId === run?.id && message.role === "assistant" && !message.streaming,
                 )
-                .map((message) => message.text)
-                .join("\n\n")
-                .slice(0, 4000) ?? "",
+                ?.text.slice(0, 4000) ?? "",
           };
         }),
       ),
@@ -181,12 +176,10 @@ const make = Effect.gen(function* () {
     const projection = yield* threads.getThreadRecords(meeting.threadId, ["messages", "runs"]);
     const run = projection.runs.find((entry) => entry.userMessageId === request.messageId);
     if (run?.status !== "completed") return;
-    const summary = projection.messages
-      .filter(
+    const summary =
+      projection.messages.findLast(
         (message) => message.runId === run.id && message.role === "assistant" && !message.streaming,
-      )
-      .map((message) => message.text)
-      .join("\n\n");
+      )?.text ?? "";
     if (!summary.trim()) return;
     const pageId = `pucko-${meeting.id}`;
     const captured = yield* pages.capture({
