@@ -1,11 +1,13 @@
 import { initialMeetingState } from "@t3tools/client-runtime/meetings";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAtomValue } from "@effect/atom-react";
 import { Link } from "@tanstack/react-router";
 import { History, Mic, MicOff, Settings, Square, Volume2, X } from "lucide-react";
 import { BotId, ProjectId, type EnvironmentId, type ThreadId } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { Button } from "../../components/ui/button";
+import { Switch } from "../../components/ui/switch";
+import { isEditableFocused } from "../../lib/editableFocus";
 import { Input } from "../../components/ui/input";
 import {
   Select,
@@ -47,8 +49,46 @@ const labels = {
   error: "Let's try that again",
 };
 
+const SOLO_KEY = "bara.pucko.solo";
+function readSolo() {
+  try {
+    return localStorage.getItem(SOLO_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function PuckoApp() {
   const { host, start } = usePucko();
+  const [solo, setSoloPreference] = useState(readSolo);
+  const setSolo = (next: boolean) => {
+    setSoloPreference(next);
+    host.controller?.setSolo(next);
+    try {
+      localStorage.setItem(SOLO_KEY, next ? "1" : "0");
+    } catch {
+      // Only a per-viewer convenience.
+    }
+  };
+  const canTalk = host.state.phase === "listening" && !host.state.muted && !host.state.solo;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Space addresses Pucko without his name; a window key listener while a meeting listens
+  useEffect(() => {
+    if (!canTalk) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== "Space" || event.repeat || event.metaKey || event.ctrlKey || event.altKey)
+        return;
+      if (
+        isEditableFocused(event.target) ||
+        (event.target instanceof Element &&
+          event.target.closest("button, a, input, select, [role=dialog], [role=menu]"))
+      )
+        return;
+      event.preventDefault();
+      host.controller?.talk();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [canTalk, host.controller]);
   const primary = usePrimaryEnvironmentId();
   const { environments } = useEnvironments();
   const [chosen, setChosen] = useState<EnvironmentId | null>(null);
@@ -85,6 +125,7 @@ export function PuckoApp() {
   const selected = meetings.find((meeting) => meeting.id === selectedMeeting);
   const state = host.environmentId === environmentId ? host.state : initialMeetingState;
   const current = host.environmentId === environmentId ? state.result : null;
+  const activation = current?.activationName ?? configuration?.activationName ?? "Citrus";
   const pending =
     current?.tasks.filter((task) => ["pending", "running", "waiting"].includes(task.status)) ?? [];
   const ready =
@@ -140,15 +181,30 @@ export function PuckoApp() {
         </div>
       </header>
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center px-8 pb-10 text-center">
-        <div className="flex w-64 items-center justify-center sm:w-80">
-          <PuckoFace state={state.character} level={state.outputLevel} />
-        </div>
+        {canTalk ? (
+          <button
+            type="button"
+            className="flex w-64 cursor-pointer items-center justify-center rounded-3xl outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:w-80"
+            aria-label={`Talk to ${activation} without saying the name`}
+            onClick={() => host.controller?.talk()}
+          >
+            <PuckoFace state={state.character} level={state.outputLevel} />
+          </button>
+        ) : (
+          <div className="flex w-64 items-center justify-center sm:w-80">
+            <PuckoFace state={state.character} level={state.outputLevel} />
+          </div>
+        )}
         <p role="status" className="min-h-6 text-sm text-muted-foreground">
           {state.phase === "connecting" ? state.stage : labels[state.character]}
         </p>
         <p className="mt-2 min-h-5 text-xs text-muted-foreground">
           {state.phase === "listening" && !state.muted
-            ? `Say “${current?.activationName ?? configuration?.activationName ?? "Citrus"}” when you need me.`
+            ? state.solo
+              ? "Just talk. I'm answering everything you say."
+              : state.attentive
+                ? `Go ahead, no need to say “${activation}”.`
+                : `Say “${activation}” anywhere in your sentence, or tap me or press Space.`
             : (environment?.label ?? "Connect to Bara to begin")}
         </p>
         <div className="mt-8 flex min-h-11 items-center gap-3">
@@ -183,6 +239,12 @@ export function PuckoApp() {
             </>
           )}
         </div>
+        <label className="mt-5 flex items-center gap-3 text-sm text-muted-foreground">
+          <Switch size="sm" checked={solo} onCheckedChange={setSolo} />
+          <span>
+            Just me <span className="text-xs">· answer everything, no name needed</span>
+          </span>
+        </label>
         {state.phase === "listening" && (
           <label className="mt-5 flex items-center gap-3 text-muted-foreground">
             <Volume2 size={15} />
@@ -441,10 +503,12 @@ export function PuckoApp() {
                   setConsentDialog(false);
                   setChosen(environmentId);
                   setError("");
-                  void start(environmentId, configuration?.activationName ?? "Citrus", {
-                    projectId,
-                    coordinatorBotId: botId,
-                  });
+                  void start(
+                    environmentId,
+                    configuration?.activationName ?? "Citrus",
+                    { projectId, coordinatorBotId: botId },
+                    solo,
+                  );
                 }}
               >
                 Start listening

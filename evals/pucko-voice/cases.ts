@@ -37,6 +37,36 @@ export const cases = [
     waitForLastClip: true,
   },
   {
+    id: "name-last",
+    source: "Pucko 0.1.17: the activation name only worked as the first word of a request.",
+    clips: [
+      "We decided to let bakers create a booking link before filling in their profile.",
+      "What onboarding change did we just agree on, Citrus?",
+    ],
+    expectation: "An audible reply about creating a booking link first.",
+    reply: true,
+    waitForLastClip: true,
+  },
+  {
+    id: "follow-up",
+    source: "Pucko 0.1.17: every follow-up question needed the activation name again.",
+    clips: ["Citrus, name one yellow fruit in a short sentence.", "And a red one?"],
+    expectation:
+      "Two audible replies: a yellow fruit, then a red fruit for the follow-up asked without the name.",
+    reply: true,
+  },
+  {
+    id: "follow-up-ends",
+    source: "Pucko follow-up window: talk between participants after a reply must not be answered.",
+    clips: [
+      "Citrus, name one yellow fruit in a short sentence.",
+      "Okay, thanks. Mya, did you book the venue for Friday?",
+    ],
+    expectation:
+      "Exactly one audible reply, about the fruit. Nothing is said about the venue or to Mya.",
+    reply: true,
+  },
+  {
     id: "clarification",
     source:
       "Pucko 0.1.16: an ambiguous report request became a Work turn instead of a spoken clarification.",

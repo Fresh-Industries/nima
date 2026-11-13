@@ -145,7 +145,7 @@ it("requires consent, recognizes a split activation name, and only delegates an 
   expect(isPuckoAddress("Hey Pucko, help", "Pucko")).toBe(true);
 });
 
-it("keeps an invited reply audible across pauses and requires a fresh address after interruption", async () => {
+it("keeps an invited reply audible across pauses, hears one follow-up, then needs the name again", async () => {
   using f = fixture();
   await f.start();
   f.speech("one", "Citrus, what do you think?");
@@ -153,16 +153,22 @@ it("keeps an invited reply audible across pauses and requires a fresh address af
   f.controller.receive({ type: "device.audio", level: 0.5, outputActive: true });
   expect(f.state().character).toBe("speaking");
   f.controller.receive({ type: "device.output-end" });
-  expect(f.state().character).toBe("listening");
+  expect(f.state()).toMatchObject({ character: "summoned", attentive: true });
   expect(f.device.setPlayback).toHaveBeenLastCalledWith(true);
   f.controller.receive({ type: "device.audio", level: 0.5, outputActive: true });
   expect(f.state().character).toBe("speaking");
   f.controller.receive({ type: "device.input-start" });
   expect(f.device.setPlayback).toHaveBeenLastCalledWith(false);
-  f.speech("side-conversation", "I was asking someone else.", 2000, 2400);
+  f.speech("correction", "No, I meant the pricing page.", 2000, 2400);
+  f.controller.receive({ type: "device.input-end" });
+  expect(f.device.setPlayback).toHaveBeenLastCalledWith(true);
+  expect(f.state().attentive).toBe(false);
+  f.controller.receive({ type: "device.output-end" });
+  // Pucko let the correction pass, so later talk belongs to the room again.
+  f.controller.receive({ type: "device.input-start" });
+  f.speech("side-conversation", "I was asking someone else.", 3900, 4000);
   f.controller.receive({ type: "device.input-end" });
   expect(f.device.setPlayback).toHaveBeenLastCalledWith(false);
-  f.controller.receive({ type: "device.output-end" });
   expect(f.state().character).toBe("listening");
   f.controller.receive({ type: "device.input-start" });
   f.speech("paused-task", "Citrus, research booking tools.", 4000, 4400);
@@ -184,6 +190,67 @@ it("keeps an invited reply audible across pauses and requires a fresh address af
   f.controller.receive({ type: "session.delegation.created", delegation: { id: "after-unmute" } });
   f.controller.receive({ type: "device.input-end" });
   expect(f.commands.filter((command) => command.action === "invite")).toHaveLength(1);
+});
+
+it("closes the follow-up window on silence or thanks, and takes the name anywhere in a sentence", async () => {
+  vi.useFakeTimers();
+  using _timers = { [Symbol.dispose]: () => void vi.useRealTimers() };
+  using f = fixture();
+  await f.start();
+  const reply = () => {
+    f.controller.receive({ type: "device.audio", level: 0.5, outputActive: true });
+    f.controller.receive({ type: "device.output-end" });
+  };
+  f.speech("one", "What do you think, Citrus?");
+  expect(f.device.setPlayback).toHaveBeenLastCalledWith(true);
+  reply();
+  expect(f.state().attentive).toBe(true);
+  f.controller.receive({ type: "device.input-start" });
+  f.speech("thanks", "Okay, thanks.", 2000, 2300);
+  f.controller.receive({ type: "device.input-end" });
+  expect(f.device.setPlayback).toHaveBeenLastCalledWith(false);
+  expect(f.state().attentive).toBe(false);
+  f.controller.receive({ type: "device.input-start" });
+  f.speech("aside", "So, Citrus, how long would that take?", 4000, 4400);
+  expect(f.device.setPlayback).toHaveBeenLastCalledWith(true);
+  reply();
+  vi.advanceTimersByTime(10000);
+  expect(f.state()).toMatchObject({ attentive: false, character: "listening" });
+  f.controller.receive({ type: "device.input-start" });
+  f.speech("late", "How long would that take?", 20000, 20400);
+  expect(f.device.setPlayback).toHaveBeenLastCalledWith(false);
+  for (const mention of ["I asked Citrus", "Maybe we tell Citrus.", "Is that from Citrus?"])
+    expect(isPuckoAddress(mention, "Citrus")).toBe(false);
+});
+
+it("answers without the name in solo mode and after the talk button, one request at a time", async () => {
+  using f = fixture();
+  await f.start();
+  f.controller.talk();
+  expect(f.state()).toMatchObject({ attentive: true, character: "summoned" });
+  expect(f.device.send).toHaveBeenLastCalledWith(
+    expect.objectContaining({ type: "session.instructions.append" }),
+  );
+  f.controller.receive({ type: "device.input-start" });
+  f.speech("tapped", "What's on the agenda?", 1000, 1300);
+  f.controller.receive({ type: "device.input-end" });
+  expect(f.device.setPlayback).toHaveBeenLastCalledWith(true);
+  f.controller.receive({ type: "device.input-start" });
+  f.speech("room", "Let's get lunch after this.", 4000, 4300);
+  expect(f.device.setPlayback).toHaveBeenLastCalledWith(false);
+  f.controller.setSolo(true);
+  expect(f.state().solo).toBe(true);
+  f.controller.receive({ type: "device.input-start" });
+  f.speech("solo-1", "Summarize what we decided.", 8000, 8300);
+  expect(f.device.setPlayback).toHaveBeenLastCalledWith(true);
+  f.controller.receive({ type: "device.input-end" });
+  f.controller.receive({ type: "device.input-start" });
+  f.speech("solo-2", "And who owns it?", 12000, 12300);
+  expect(f.device.setPlayback).toHaveBeenLastCalledWith(true);
+  f.controller.setSolo(false);
+  f.controller.receive({ type: "device.input-start" });
+  f.speech("room-again", "Did you check in the right person?", 16000, 16300);
+  expect(f.device.setPlayback).toHaveBeenLastCalledWith(false);
 });
 
 it("keeps completed work quiet until the next address without blocking capture", async () => {

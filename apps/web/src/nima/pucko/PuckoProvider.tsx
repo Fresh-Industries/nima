@@ -27,6 +27,7 @@ const PuckoContext = createContext<{
     environmentId: EnvironmentId,
     activationName: string,
     scope: { projectId: ProjectId | null; coordinatorBotId: BotId | null },
+    solo: boolean,
   ) => Promise<void>;
 } | null>(null);
 export function usePucko() {
@@ -78,6 +79,7 @@ export function PuckoProvider({ children }: { children: ReactNode }) {
     environmentId: EnvironmentId,
     activationName: string,
     scope: { projectId: ProjectId | null; coordinatorBotId: BotId | null },
+    solo: boolean,
   ) => {
     if (host.controller && ["connecting", "listening"].includes(host.state.phase)) return;
     const controller = new MeetingController(
@@ -95,7 +97,8 @@ export function PuckoProvider({ children }: { children: ReactNode }) {
       randomUUID,
       activationName,
     );
-    setHost({ controller, environmentId, state: initialMeetingState });
+    setHost({ controller, environmentId, state: { ...initialMeetingState, solo } });
+    controller.setSolo(solo);
     await controller.start(true, scope);
   };
   const pathname = useLocation({ select: (location) => location.pathname });

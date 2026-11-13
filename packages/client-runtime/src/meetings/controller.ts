@@ -42,6 +42,10 @@ export type MeetingState = {
   muted: boolean;
   volume: number;
   outputLevel: number;
+  /** One person talking with Pucko: everything said is addressed to him. */
+  solo: boolean;
+  /** Pucko is taking the next thing said as addressed to him, without his name. */
+  attentive: boolean;
   result: MeetingExperimentResult | null;
   diagnostics: string[];
 };
@@ -56,18 +60,39 @@ export const initialMeetingState: MeetingState = {
   muted: false,
   volume: 0.8,
   outputLevel: 0,
+  solo: false,
+  attentive: false,
   result: null,
   diagnostics: [],
 };
 
+// Words that put the name in the third person ("I asked Citrus") rather than calling him.
+const ABOUT =
+  "(?:ask|asked|tell|told|to|with|from|about|for|of|and|or|by|call|called|named|is|was|like|use|using|say|said|if|that|maybe|let|have|had)";
+
+/**
+ * The request in an utterance that calls Pucko by name: at the start ("Citrus, …"), set off
+ * mid-sentence ("So, Citrus, …") or at the end ("What do you think, Citrus?"). Null when the
+ * name is absent or only mentioned. The voice model still judges whether to answer.
+ */
 function addressedRequest(text: string, activationName: string) {
-  const escaped = activationName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const name = activationName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const prefix = new RegExp(
-    `^[\\s.!?,;:…]*(?:(?:hey|hi|okay|ok)[,\\s]+)?${escaped}(?=$|[\\s,.!?])`,
+    `^[\\s.!?,;:…]*(?:(?:hey|hi|okay|ok)[,\\s]+)?${name}(?=$|[\\s,.!?])`,
     "iu",
   ).exec(text);
-  return prefix ? text.slice(prefix[0].length) : null;
+  if (prefix) return text.slice(prefix[0].length);
+  const aside = new RegExp(`^(.*),\\s*${name}\\s*,(.*)$`, "isu").exec(text);
+  if (aside) return `${aside[1]} ${aside[2]}`;
+  const suffix = new RegExp(`^(.*?)[\\s,;:\\u2014-]+${name}[\\s.!?…]*$`, "isu").exec(text);
+  if (suffix && !new RegExp(`(?:^|\\s)${ABOUT}[\\s,]*$`, "iu").test(suffix[1]!)) return suffix[1]!;
+  return null;
 }
+// Said alone in a follow-up, these end the exchange instead of asking for more.
+const CLOSING =
+  /^[\s.!,]*(?:(?:ok|okay|great|cool|perfect|got it|alright)[\s,.!]*)?(?:thanks|thank you|thanks a lot|that's all|that is all|that's it|never ?mind|we're good|all good|no thanks)?[\s.!,]*$/iu;
+const FOLLOW_UP_MS = 10000;
+const TALK_MS = 15000;
 export function isPuckoAddress(text: string, activationName: string) {
   return addressedRequest(text, activationName) !== null;
 }
@@ -89,6 +114,13 @@ export class MeetingController {
   private utteranceAddressed = false;
   private requestReady = false;
   private requestConsumed = false;
+  private solo = false;
+  // The floor is open while the next utterance counts as addressed without the name: for a
+  // moment after a reply (a follow-up) or after a participant chose to talk to Pucko.
+  private floorOpen = false;
+  private floorTimer: ReturnType<typeof setTimeout> | undefined;
+  private utteranceOpen = false;
+  private utteranceNamed = false;
   private pendingDelegations = new Set<string>();
   private handledDelegations = new Set<string>();
   private delivered = new Set<string>();
@@ -145,6 +177,7 @@ export class MeetingController {
         ["pending", "running", "waiting"].includes(task.status),
       );
     this.update({
+      attentive: this.floorOpen && !this.state.muted,
       character: this.state.muted
         ? "muted"
         : this.state.outputLevel > 0.01 &&
@@ -156,9 +189,11 @@ export class MeetingController {
             ? this.inputActive || !this.requestReady
               ? "summoned"
               : "thinking"
-            : working
-              ? "working"
-              : "listening",
+            : this.floorOpen
+              ? "summoned"
+              : working
+                ? "working"
+                : "listening",
     });
   }
   async start(
@@ -223,7 +258,8 @@ export class MeetingController {
     // A response deadline releases an unanswered invitation; it never fabricates completion.
     this.responseDeadline = setTimeout(() => {
       if (!this.addressed || this.replyStarted) return;
-      const requested = this.requestReady;
+      // Without the name, staying quiet is a fair answer to talk meant for someone else.
+      const requested = this.requestReady && this.utteranceNamed;
       this.quiet();
       if (requested)
         this.fail(
@@ -241,6 +277,18 @@ export class MeetingController {
     this.device.setPlayback(false);
     this.update({ outputLevel: 0 });
   }
+  private openFloor(ms: number) {
+    clearTimeout(this.floorTimer);
+    this.floorOpen = true;
+    this.floorTimer = setTimeout(() => this.closeFloor(), ms);
+  }
+  private closeFloor() {
+    clearTimeout(this.floorTimer);
+    this.floorTimer = undefined;
+    if (!this.floorOpen) return;
+    this.floorOpen = false;
+    this.character();
+  }
   private awaitingRequest() {
     return this.addressed && !this.replyStarted && !this.requestConsumed;
   }
@@ -251,6 +299,7 @@ export class MeetingController {
     if (event.type === "session.started") {
       this.stage("Listening");
       this.update({ phase: "listening", character: "listening" });
+      if (this.solo) this.announceSolo();
       return;
     }
     if (event.type === "error" || event.type === "session.closed") {
@@ -296,6 +345,8 @@ export class MeetingController {
     }
     if (event.type === "device.input-start") {
       this.inputActive = true;
+      // Speech inside the window holds it open until its words arrive.
+      if (this.floorOpen) clearTimeout(this.floorTimer);
       if (this.outputActive && this.addressed) {
         this.device.setPlayback(false);
         this.device.send({
@@ -325,6 +376,8 @@ export class MeetingController {
     }
     if (event.type === "device.input-end") {
       this.inputActive = false;
+      // A sound that produced no words must not leave the floor open indefinitely.
+      if (this.floorOpen) this.openFloor(FOLLOW_UP_MS);
       if (this.addressed && this.requestReady && !this.state.muted && !this.waitingForAcceptance)
         this.device.setPlayback(true);
       this.flushDelegations();
@@ -336,6 +389,8 @@ export class MeetingController {
       this.outputActive = false;
       // GPT-Live pauses are not response-completion events; the next input revokes playback.
       this.update({ outputLevel: 0 });
+      // After a reply the conversation continues: a follow-up needs no name.
+      if (this.addressed && this.replyStarted && !this.state.muted) this.openFloor(FOLLOW_UP_MS);
       this.deliverAnswers();
       this.character();
       return;
@@ -399,16 +454,28 @@ export class MeetingController {
     this.update({ transcript });
     this.scheduleCheckpoint();
     if (input && !this.state.muted) {
-      if (event.start_ms - this.lastInputEnd > 1000 && !this.awaitingRequest()) {
+      // A nameless request Pucko let pass is over once someone speaks again after a pause.
+      const passed = this.requestReady && !this.utteranceNamed && !this.replyStarted;
+      if (event.start_ms - this.lastInputEnd > 1000 && (!this.awaitingRequest() || passed)) {
         this.quiet();
         this.utterance = "";
         this.utteranceAddressed = false;
         this.requestConsumed = false;
       }
       this.lastInputEnd = event.end_ms;
+      if (!this.utterance) {
+        // An open floor covers exactly one utterance; only a reply opens it again.
+        this.utteranceOpen = this.solo || this.floorOpen;
+        this.closeFloor();
+      }
       this.utterance = (this.utterance + event.delta).slice(-4000);
       this.update({ candidate: this.utterance });
-      const request = addressedRequest(this.utterance, this.activationName);
+      const named = addressedRequest(this.utterance, this.activationName);
+      this.utteranceNamed = named !== null;
+      const request =
+        named ?? (this.utteranceOpen && !CLOSING.test(this.utterance) ? this.utterance : null);
+      // Later words can show the name was only mentioned ("…Citrus said so").
+      if (request === null && this.utteranceAddressed && !this.replyStarted) this.quiet();
       this.utteranceAddressed = request !== null;
       const ready = request !== null && /[\p{L}\p{N}]/u.test(request);
       if (!this.requestReady && ready) this.addressed = false;
@@ -542,6 +609,37 @@ export class MeetingController {
       content: `Confirmed Bara result. Briefly report the useful outcome without reading Markdown: ${answer.slice(0, 1400)}`,
     });
   }
+  /** Solo mode: one participant, so every utterance is addressed to Pucko. */
+  setSolo(solo: boolean) {
+    if (this.solo === solo) return;
+    this.solo = solo;
+    this.update({ solo });
+    if (this.state.phase !== "listening") return;
+    this.announceSolo();
+  }
+  private announceSolo() {
+    this.device.send({
+      type: "session.instructions.append",
+      event_id: this.newId(),
+      delegation_id: null,
+      content: this.solo
+        ? `Solo mode is on: one participant is talking with you directly. Treat everything they say as addressed to you and answer without waiting for "${this.activationName}". Still stay silent for sounds that are not speech to you. Do not reply to this notice.`
+        : `Solo mode is off: several participants are present again. Answer only when addressed by "${this.activationName}" or in a direct follow-up to your own reply. Do not reply to this notice.`,
+    });
+  }
+  /** A participant chose to talk to Pucko (a tap or a key): their next utterance is his. */
+  talk() {
+    if (this.state.phase !== "listening" || this.state.muted || this.solo) return;
+    this.openFloor(TALK_MS);
+    this.device.send({
+      type: "session.instructions.append",
+      event_id: this.newId(),
+      delegation_id: null,
+      content: `A participant pressed the talk button. The next thing said is addressed to you even without "${this.activationName}"; answer it. Do not reply to this notice.`,
+    });
+    this.stage("Talk button pressed; listening for the request");
+    this.character();
+  }
   setVolume(volume: number) {
     const value = Math.max(0, Math.min(1, volume));
     this.device.setVolume(value);
@@ -563,6 +661,8 @@ export class MeetingController {
     if (!this.state.muted) {
       this.device.stopCapture();
       this.quiet();
+      this.closeFloor();
+      this.utteranceOpen = false;
       if (this.pendingDelegations.size) this.waitingForAcceptance = false;
       this.pendingDelegations.clear();
       this.inputActive = false;
@@ -589,9 +689,17 @@ export class MeetingController {
     this.abort.abort();
     clearTimeout(this.checkpoint);
     clearTimeout(this.responseDeadline);
+    clearTimeout(this.floorTimer);
+    this.floorOpen = false;
     this.device.stopCapture();
     this.device.setPlayback(false);
-    this.update({ phase: "ended", character: "idle", outputLevel: 0, stage: "Meeting ended" });
+    this.update({
+      phase: "ended",
+      character: "idle",
+      outputLevel: 0,
+      attentive: false,
+      stage: "Meeting ended",
+    });
   }
   async end() {
     if (this.state.phase === "ended" || this.disposed) return;
