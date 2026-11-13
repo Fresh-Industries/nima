@@ -30,6 +30,7 @@ import { botActivity, needsYouReason, threadWorkState, WORK_STATE_LABEL } from "
 import { useNimaStore } from "./store";
 import { sortByWorkState, useWorkspaceThreads, WorkStateDot } from "./Workspace";
 import { useLiveActivity } from "./studio/liveActivity";
+import { BaraTabs } from "./BaraTabs";
 import styles from "./nima.module.css";
 
 const HEADER_BOT_LIMIT = 5;
@@ -417,11 +418,10 @@ export function BaraTopBar({
       <Link to="/work" className={styles["bara-topbar-brand"]} aria-label="Bara, your Desk">
         bara<span>.</span>
       </Link>
-      <nav className={styles["bara-topbar-nav"]} aria-label="Bara">
-        <WorkIndicator />
-        <LiveIndicator />
-      </nav>
+      <BaraTabs />
       <div className={styles["bara-topbar-tools"]}>
+        <LiveIndicator />
+        <WorkIndicator />
         <BotAvatars />
         <button
           className={styles["bara-topbar-search"]}
@@ -435,7 +435,7 @@ export function BaraTopBar({
         <Link
           to="/inbox"
           className={styles["bara-topbar-bell"]}
-          aria-label={inboxWaiting ? "Inbox, items waiting" : "Inbox"}
+          aria-label={inboxWaiting ? "To review, items waiting" : "To review"}
           data-attention={needsYou || undefined}
         >
           <Bell size={17} />

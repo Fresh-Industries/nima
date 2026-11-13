@@ -98,6 +98,7 @@ import Migration0087 from "./Migrations/087_PersistentBots.ts";
 import Migration0086 from "./Migrations/086_AssistantWork.ts";
 
 import Migration0094 from "./Migrations/094_PuckoMeetings.ts";
+import Migration0095 from "./Migrations/095_DelegatedWorkReview.ts";
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -195,6 +196,7 @@ const migrationEntries = [
   [92, "BotCapabilities", Migration0092],
   [93, "BotMemory", Migration0093],
   [94, "PuckoMeetings", Migration0094],
+  [95, "DelegatedWorkReview", Migration0095],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

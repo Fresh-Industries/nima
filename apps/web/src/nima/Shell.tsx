@@ -212,7 +212,7 @@ export function BaraFrame({ children }: { children: ReactNode }) {
             </div>
           </div>
           {!modal && <BaraDock />}
-          <FloatingAssistant hidden={isAssistant || modal} />
+          <FloatingAssistant hidden={isAssistant || modal || pathname === "/pucko"} />
           <aside
             className={`${styles["bara-companion"]} ${!shown || modal ? styles["bara-hidden"] : ""} ${maximized ? styles["bara-companion-expanded"] : ""}`}
             style={{ width }}

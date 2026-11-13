@@ -1,8 +1,18 @@
 import { initialMeetingState } from "@t3tools/client-runtime/meetings";
 import { useEffect, useState } from "react";
 import { useAtomValue } from "@effect/atom-react";
-import { Link } from "@tanstack/react-router";
-import { History, Mic, MicOff, Settings, Square, Volume2, X } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import {
+  History,
+  Maximize2,
+  MessageSquare,
+  Mic,
+  MicOff,
+  Settings,
+  Square,
+  Volume2,
+  X,
+} from "lucide-react";
 import { BotId, ProjectId, type EnvironmentId, type ThreadId } from "@t3tools/contracts";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { Button } from "../../components/ui/button";
@@ -35,6 +45,9 @@ import { serverEnvironment } from "../../state/server";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useBots } from "../useBots";
+import ChatView from "../../components/ChatView";
+import { BackgroundThreadContext } from "../../components/chat/backgroundThread";
+import { ComposerHandleContext } from "../../composerHandleContext";
 import { usePucko } from "./PuckoProvider";
 import { PuckoFace } from "./PuckoFace";
 
@@ -49,6 +62,14 @@ const labels = {
   error: "Let's try that again",
 };
 
+const CHAT_KEY = "bara.pucko.chat";
+function readChat() {
+  try {
+    return localStorage.getItem(CHAT_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
 const SOLO_KEY = "bara.pucko.solo";
 function readSolo() {
   try {
@@ -60,6 +81,16 @@ function readSolo() {
 
 export function PuckoApp() {
   const { host, start } = usePucko();
+  const navigate = useNavigate();
+  const [chat, setChatPreference] = useState(readChat);
+  const setChat = (next: boolean) => {
+    setChatPreference(next);
+    try {
+      localStorage.setItem(CHAT_KEY, next ? "1" : "0");
+    } catch {
+      // Only a per-viewer convenience.
+    }
+  };
   const [solo, setSoloPreference] = useState(readSolo);
   const setSolo = (next: boolean) => {
     setSoloPreference(next);
@@ -118,6 +149,14 @@ export function PuckoApp() {
     [botId, setBotId] = useState<BotId | null>(null),
     [selectedMeeting, setSelectedMeeting] = useState<string | null>(null);
   const configuration = query.data?.configuration;
+  const homeThreadId = query.data?.homeThreadId;
+  const openConversation = () =>
+    homeThreadId && environmentId
+      ? navigate({
+          to: "/$environmentId/$threadId",
+          params: { environmentId, threadId: homeThreadId },
+        })
+      : undefined;
   const name = nameDraft ?? configuration?.activationName ?? "Citrus";
   const projects = useProjects();
   const team = useBots(environmentId ?? undefined);
@@ -165,6 +204,15 @@ export function PuckoApp() {
           <Button
             variant="ghost"
             size="icon-sm"
+            aria-label={chat ? "Hide chat" : "Show chat"}
+            aria-pressed={chat}
+            onClick={() => setChat(!chat)}
+          >
+            <MessageSquare size={17} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
             aria-label="Meeting history"
             onClick={() => setHistory(!history)}
           >
@@ -180,163 +228,213 @@ export function PuckoApp() {
           </Button>
         </div>
       </header>
-      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center px-8 pb-10 text-center">
-        {canTalk ? (
-          <button
-            type="button"
-            className="flex w-64 cursor-pointer items-center justify-center rounded-3xl outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:w-80"
-            aria-label={`Talk to ${activation} without saying the name`}
-            onClick={() => host.controller?.talk()}
-          >
-            <PuckoFace state={state.character} level={state.outputLevel} />
-          </button>
-        ) : (
-          <div className="flex w-64 items-center justify-center sm:w-80">
-            <PuckoFace state={state.character} level={state.outputLevel} />
-          </div>
-        )}
-        <p role="status" className="min-h-6 text-sm text-muted-foreground">
-          {state.phase === "connecting" ? state.stage : labels[state.character]}
-        </p>
-        <p className="mt-2 min-h-5 text-xs text-muted-foreground">
-          {state.phase === "listening" && !state.muted
-            ? state.solo
-              ? "Just talk. I'm answering everything you say."
-              : state.attentive
-                ? `Go ahead, no need to say “${activation}”.`
-                : `Say “${activation}” anywhere in your sentence, or tap me or press Space.`
-            : (environment?.label ?? "Connect to Bara to begin")}
-        </p>
-        <div className="mt-8 flex min-h-11 items-center gap-3">
-          {!active ? (
-            <Button
-              size="lg"
-              disabled={!ready}
-              onClick={() => {
-                setConsent(false);
-                setConsentDialog(true);
-              }}
+      <div className="flex min-h-0 flex-1 max-[900px]:flex-col">
+        <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center px-8 pb-10 text-center">
+          {canTalk ? (
+            <button
+              type="button"
+              className="flex w-64 cursor-pointer items-center justify-center rounded-3xl outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:w-80"
+              aria-label={`Talk to ${activation} without saying the name`}
+              onClick={() => host.controller?.talk()}
             >
-              <Mic size={16} />
-              Start Meeting
-            </Button>
+              <PuckoFace state={state.character} level={state.outputLevel} />
+            </button>
           ) : (
-            <>
-              {state.phase === "listening" && (
-                <Button
-                  variant="outline"
-                  size="icon"
-                  aria-label={state.muted ? "Unmute microphone" : "Mute microphone"}
-                  onClick={() => void host.controller?.toggleMute()}
-                >
-                  {state.muted ? <MicOff size={18} /> : <Mic size={18} />}
-                </Button>
-              )}
-              <Button variant="outline" onClick={() => void host.controller?.end()}>
-                <Square size={14} />
-                End meeting
-              </Button>
-            </>
+            <div className="flex w-64 items-center justify-center sm:w-80">
+              <PuckoFace state={state.character} level={state.outputLevel} />
+            </div>
           )}
-        </div>
-        <label className="mt-5 flex items-center gap-3 text-sm text-muted-foreground">
-          <Switch size="sm" checked={solo} onCheckedChange={setSolo} />
-          <span>
-            Just me <span className="text-xs">· answer everything, no name needed</span>
-          </span>
-        </label>
-        {state.phase === "listening" && (
-          <label className="mt-5 flex items-center gap-3 text-muted-foreground">
-            <Volume2 size={15} />
-            <input
-              type="range"
-              aria-label="Speaker volume"
-              min="0"
-              max="1"
-              step="0.05"
-              value={state.volume}
-              onChange={(event) => host.controller?.setVolume(Number(event.target.value))}
-            />
+          <p role="status" className="min-h-6 text-sm text-muted-foreground">
+            {state.phase === "connecting" ? state.stage : labels[state.character]}
+          </p>
+          <p className="mt-2 min-h-5 text-xs text-muted-foreground">
+            {state.phase === "listening" && !state.muted
+              ? state.solo
+                ? "Just talk. I'm answering everything you say."
+                : state.attentive
+                  ? `Go ahead, no need to say “${activation}”.`
+                  : `Say “${activation}” anywhere in your sentence, or tap me or press Space.`
+              : (environment?.label ?? "Connect to Bara to begin")}
+          </p>
+          <div className="mt-8 flex min-h-11 items-center gap-3">
+            {!active ? (
+              <Button
+                size="lg"
+                disabled={!ready}
+                onClick={() => {
+                  setConsent(false);
+                  setConsentDialog(true);
+                }}
+              >
+                <Mic size={16} />
+                Start Meeting
+              </Button>
+            ) : (
+              <>
+                {state.phase === "listening" && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label={state.muted ? "Unmute microphone" : "Mute microphone"}
+                    onClick={() => void host.controller?.toggleMute()}
+                  >
+                    {state.muted ? <MicOff size={18} /> : <Mic size={18} />}
+                  </Button>
+                )}
+                <Button variant="outline" onClick={() => void host.controller?.end()}>
+                  <Square size={14} />
+                  End meeting
+                </Button>
+              </>
+            )}
+          </div>
+          <label className="mt-5 flex items-center gap-3 text-sm text-muted-foreground">
+            <Switch size="sm" checked={solo} onCheckedChange={setSolo} />
+            <span>
+              Just me <span className="text-xs">· answer everything, no name needed</span>
+            </span>
           </label>
-        )}
-        {state.phase === "listening" && state.playbackError && (
-          <div className="mt-4 max-w-md text-sm" role="alert">
-            <p className="text-destructive">{state.playbackError}</p>
-            <Button variant="outline" onClick={() => void host.controller?.resumeSpeaker()}>
-              <Volume2 size={16} />
-              Enable speaker
-            </Button>
-          </div>
-        )}
-        {!active && connected && !supportsPucko && (
-          <p className="mt-4 text-sm text-muted-foreground">
-            Update Bara on {environment?.label} to use Pucko.
-          </p>
-        )}
-        {!active && supportsPucko && configuration?.keySource === "missing" && (
-          <div className="mt-4">
-            <Button variant="link" onClick={() => setSettings(true)}>
-              Connect OpenAI voice to begin
-            </Button>
-          </div>
-        )}
-        {!active && connected && supportsPucko && !allowed && (
-          <p className="mt-4 text-sm text-muted-foreground">
-            This connection needs permission to operate agents and read their results.
-          </p>
-        )}
-        {query.error && (
-          <div role="alert" className="mt-4 text-sm text-destructive">
-            Could not load Pucko on this server.{" "}
-            <Button variant="link" onClick={query.refresh}>
-              Retry connection
-            </Button>
-          </div>
-        )}
-        {(state.error || error) && (
-          <p role="alert" className="mt-5 max-w-md text-sm text-destructive">
-            {state.error || error}
-          </p>
-        )}
-        {state.phase === "ended" && current?.summaryPageId && (
-          <p className="mt-5 text-sm text-muted-foreground">
-            Meeting notes saved.{" "}
-            <Button
-              variant="link"
-              onClick={() => {
-                setHistory(true);
-                setSelectedMeeting(current.id);
-              }}
-            >
-              Read notes
-            </Button>
-          </p>
-        )}
-        {state.phase === "ended" &&
-          current &&
-          !current.summaryPageId &&
-          current.requests.some((request) => request.requestId.startsWith("notes-")) && (
-            <p className="mt-5 text-sm text-muted-foreground">
-              {current.requests.find((request) => request.requestId.startsWith("notes-"))
-                ?.status === "failed"
-                ? "Notes could not be prepared. Open the meeting details to review the failure."
-                : "Preparing meeting notes in Bara…"}
+          {state.phase === "listening" && (
+            <label className="mt-5 flex items-center gap-3 text-muted-foreground">
+              <Volume2 size={15} />
+              <input
+                type="range"
+                aria-label="Speaker volume"
+                min="0"
+                max="1"
+                step="0.05"
+                value={state.volume}
+                onChange={(event) => host.controller?.setVolume(Number(event.target.value))}
+              />
+            </label>
+          )}
+          {state.phase === "listening" && state.playbackError && (
+            <div className="mt-4 max-w-md text-sm" role="alert">
+              <p className="text-destructive">{state.playbackError}</p>
+              <Button variant="outline" onClick={() => void host.controller?.resumeSpeaker()}>
+                <Volume2 size={16} />
+                Enable speaker
+              </Button>
+            </div>
+          )}
+          {!active && connected && !supportsPucko && (
+            <p className="mt-4 text-sm text-muted-foreground">
+              Update Bara on {environment?.label} to use Pucko.
             </p>
           )}
-        {current && pending.length > 0 && (
-          <p className="mt-5 text-xs text-muted-foreground">
-            {pending.length} {pending.length === 1 ? "task" : "tasks"} in progress ·{" "}
-            <Button
-              variant="link"
-              size="sm"
-              onClick={() => {
-                setHistory(true);
-                setSelectedMeeting(current.id);
-              }}
-            >
-              View work
-            </Button>
-          </p>
+          {!active && supportsPucko && configuration?.keySource === "missing" && (
+            <div className="mt-4">
+              <Button variant="link" onClick={() => setSettings(true)}>
+                Connect OpenAI voice to begin
+              </Button>
+            </div>
+          )}
+          {!active && connected && supportsPucko && !allowed && (
+            <p className="mt-4 text-sm text-muted-foreground">
+              This connection needs permission to operate agents and read their results.
+            </p>
+          )}
+          {query.error && (
+            <div role="alert" className="mt-4 text-sm text-destructive">
+              Could not load Pucko on this server.{" "}
+              <Button variant="link" onClick={query.refresh}>
+                Retry connection
+              </Button>
+            </div>
+          )}
+          {(state.error || error) && (
+            <p role="alert" className="mt-5 max-w-md text-sm text-destructive">
+              {state.error || error}
+            </p>
+          )}
+          {state.phase === "ended" && current?.summaryPageId && (
+            <p className="mt-5 text-sm text-muted-foreground">
+              Meeting notes saved.{" "}
+              <Button
+                variant="link"
+                onClick={() => {
+                  setHistory(true);
+                  setSelectedMeeting(current.id);
+                }}
+              >
+                Read notes
+              </Button>
+            </p>
+          )}
+          {state.phase === "ended" &&
+            current &&
+            !current.summaryPageId &&
+            current.requests.some((request) => request.requestId.startsWith("notes-")) && (
+              <p className="mt-5 text-sm text-muted-foreground">
+                {current.requests.find((request) => request.requestId.startsWith("notes-"))
+                  ?.status === "failed"
+                  ? "Notes could not be prepared. Open the meeting details to review the failure."
+                  : "Preparing meeting notes in Bara…"}
+              </p>
+            )}
+          {current && pending.length > 0 && (
+            <p className="mt-5 text-xs text-muted-foreground">
+              {pending.length} {pending.length === 1 ? "task" : "tasks"} in progress ·{" "}
+              <Button
+                variant="link"
+                size="sm"
+                onClick={() => {
+                  setHistory(true);
+                  setSelectedMeeting(current.id);
+                }}
+              >
+                View work
+              </Button>
+            </p>
+          )}
+        </div>
+        {chat && (
+          <aside
+            className="flex min-h-0 w-[min(440px,42vw)] shrink-0 flex-col border-l border-border max-[900px]:h-[60dvh] max-[900px]:w-full max-[900px]:border-t max-[900px]:border-l-0"
+            aria-label="Chat with Pucko"
+            data-side-chat-pane
+          >
+            <div className="flex h-11 shrink-0 items-center justify-between border-b border-border px-4 text-sm">
+              <span className="font-medium">Chat</span>
+              {homeThreadId && environmentId && (
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="Open the conversation full screen"
+                  onClick={() => void openConversation()}
+                >
+                  <Maximize2 size={14} />
+                </Button>
+              )}
+            </div>
+            <div className="relative flex min-h-0 flex-1 flex-col">
+              {homeThreadId && environmentId ? (
+                <BackgroundThreadContext value>
+                  <ComposerHandleContext value={null}>
+                    <ChatView
+                      environmentId={environmentId}
+                      threadId={homeThreadId}
+                      routeKind="server"
+                      embedded={{
+                        openToolDiff: () => void openConversation(),
+                        runShellCommand: () => void openConversation(),
+                      }}
+                    />
+                  </ComposerHandleContext>
+                </BackgroundThreadContext>
+              ) : (
+                <p className="m-auto max-w-xs p-6 text-center text-sm text-muted-foreground">
+                  {!connected
+                    ? "Connect to Bara to chat with Pucko."
+                    : query.data && homeThreadId === undefined
+                      ? `Update Bara on ${environment?.label ?? "this server"} to chat with Pucko.`
+                      : query.data
+                        ? "Pucko's conversation could not be prepared. Check that a provider is ready, then reopen this page."
+                        : "Opening the conversation…"}
+                </p>
+              )}
+            </div>
+          </aside>
         )}
       </div>
       {current?.threadId && environmentId && active && (

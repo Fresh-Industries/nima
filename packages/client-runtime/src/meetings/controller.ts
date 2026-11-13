@@ -586,15 +586,21 @@ export class MeetingController {
     if (
       this.state.phase !== "listening" ||
       this.state.muted ||
-      !this.addressed ||
-      !this.utteranceAddressed ||
-      !this.requestReady ||
-      this.replyStarted ||
       this.inputActive ||
       this.waitingForAcceptance ||
-      this.outputActive
+      this.outputActive ||
+      !this.readyAnswers.length
     )
       return;
+    // In a room, a finished task waits to be asked about. Alone with Pucko, he tells you.
+    const asked =
+      this.addressed && this.utteranceAddressed && this.requestReady && !this.replyStarted;
+    if (!asked && !(this.solo && !this.awaitingRequest())) return;
+    if (!asked) {
+      this.replyStarted = false;
+      this.requestReady = true;
+      this.utteranceAddressed = true;
+    }
     const results = this.readyAnswers.splice(0);
     const result = results[0];
     if (!result) return;

@@ -25,6 +25,7 @@ import styles from "./nima.module.css";
 
 type ReviewItem = ReturnType<typeof useWorkspaceReview>["items"][number];
 
+/** Finished work waiting for you. Shown as the Desk's "To review" view. */
 export function WorkspaceInbox() {
   const [view, setView] = useState<"review" | "settled">("review");
   const [search, setSearch] = useState("");
@@ -77,13 +78,8 @@ export function WorkspaceInbox() {
     }),
   );
   return (
-    <main className={styles["nima-page"]}>
-      <header className={styles["nima-page-header"]}>
-        <div>
-          <h1>Inbox</h1>
-          {review.connected && <p>{summary}</p>}
-        </div>
-      </header>
+    <>
+      {review.connected && <p className="sr-only">{summary}</p>}
       <BotToolApprovals settled={view === "settled"} />
       <div className="mb-7 flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-1" role="group" aria-label="Review status">
@@ -98,7 +94,7 @@ export function WorkspaceInbox() {
               }}
             >
               {tab === "review"
-                ? `To review${review.pendingCount ? ` · ${review.pendingCount}` : ""}`
+                ? `Waiting${review.pendingCount ? ` · ${review.pendingCount}` : ""}`
                 : "Settled"}
             </Button>
           ))}
@@ -223,7 +219,7 @@ export function WorkspaceInbox() {
           </Button>
         )}
       </div>
-    </main>
+    </>
   );
 }
 

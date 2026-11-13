@@ -1,7 +1,13 @@
 import { ProjectTeamsDialog } from "./ProjectTeams";
 import { openCommandPalette } from "../commandPaletteBus";
 import { derivePhysicalProjectKey } from "@t3tools/client-runtime/state/project-grouping";
-import { BotId, EnvironmentId, ProjectId, HOME_BOT_ID } from "@t3tools/contracts";
+import {
+  BotId,
+  EnvironmentId,
+  ProjectId,
+  HOME_BOT_ID,
+  PUCKO_HOME_THREAD_ID,
+} from "@t3tools/contracts";
 import { newThreadId } from "../lib/utils";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import { useBots, useOpenBotConversation } from "./useBots";
@@ -19,11 +25,12 @@ import {
 import { useAtomValue } from "@effect/atom-react";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { SaveResultButton } from "./SaveResultButton";
+import { inboxSummary } from "./inboxSummary";
 import { NimaDialog } from "./NimaDialog";
 import styles from "./nima.module.css";
 import desk from "./DeskBoard.module.css";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
@@ -72,6 +79,8 @@ export function useWorkspaceThreads() {
     active: threads.filter((thread) => {
       const meta = review.metadata.get(keyFor(thread));
       if (
+        // Pucko's conversation lives in his own app, like the Assistant's and each Bot's.
+        thread.id === PUCKO_HOME_THREAD_ID ||
         meta?.kind === "assistant" ||
         dailyDate(thread) ||
         (botDirectory.environmentId === thread.environmentId &&
@@ -122,6 +131,8 @@ export function markSessionTransition(tile: HTMLElement) {
   }, 700);
 }
 
+const REVIEW_LANE_LIMIT = 4;
+
 const WORK_STATE_ORDER: Record<WorkState, number> = {
   "needs-you": 0,
   working: 1,
@@ -150,12 +161,15 @@ export function ConversationList({
   environmentId,
   projectId,
   view,
+  review: reviewPage,
   new: startNew,
 }: {
   botId?: BotId;
   environmentId?: EnvironmentId;
   projectId?: ProjectId;
   view?: "projects";
+  /** The "To review" view, rendered in place of the sessions board. */
+  review?: ReactNode;
   new?: true;
 }) {
   const { active, review, threads } = useWorkspaceThreads();
@@ -205,6 +219,14 @@ export function ConversationList({
     const state = threadWorkState(thread, Boolean(meta?.assistantWorkPending || meta?.workPending));
     return { thread, key, meta, state };
   });
+  const toReview = review.items.filter(
+    (item) =>
+      item.state === "review" &&
+      (!environmentId || item.environmentId === environmentId) &&
+      !botId &&
+      !projectId &&
+      `${item.title} ${item.summary}`.toLowerCase().includes(query.toLowerCase()),
+  );
   const summary = WORK_GROUPS.flatMap((group) => {
     const count = rows.filter((row) => group.states.includes(row.state)).length;
     return count ? [`${count} ${group.label.toLowerCase()}`] : [];
@@ -228,7 +250,13 @@ export function ConversationList({
       <header className={styles["nima-page-header"]}>
         <div>
           <h1>{project?.title ?? "Desk"}</h1>
-          {view !== "projects" && summary && <p>{summary}</p>}
+          {view !== "projects" && (summary || review.pendingCount > 0) && (
+            <p>
+              {[summary, review.pendingCount ? `${review.pendingCount} to review` : ""]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -249,8 +277,15 @@ export function ConversationList({
         </div>
       </header>
       <nav className={styles["bara-work-tabs"]} aria-label="Work views">
-        <Link to="/work" search={{}} aria-current={!view && !projectId ? "page" : undefined}>
+        <Link
+          to="/work"
+          search={{}}
+          aria-current={!view && !projectId && !reviewPage ? "page" : undefined}
+        >
           Sessions
+        </Link>
+        <Link to="/inbox" aria-current={reviewPage ? "page" : undefined}>
+          To review{review.pendingCount ? ` · ${review.pendingCount}` : ""}
         </Link>
         <Link
           to="/work"
@@ -261,7 +296,9 @@ export function ConversationList({
         </Link>
         {project && <span>{project.title}</span>}
       </nav>
-      {view === "projects" ? (
+      {reviewPage ? (
+        reviewPage
+      ) : view === "projects" ? (
         <WorkProjects query={query} onQuery={setQuery} />
       ) : (
         <>
@@ -327,6 +364,35 @@ export function ConversationList({
             </section>
           )}
           <div className={desk.board}>
+            {toReview.length > 0 && (
+              <section aria-label="To review" className={desk.lane} data-work-state="review">
+                <h2>
+                  <WorkStateDot state="ready" />
+                  To review
+                  <span>{review.pendingCount || toReview.length}</span>
+                </h2>
+                <ul>
+                  {toReview.slice(0, REVIEW_LANE_LIMIT).map((item) => (
+                    <li
+                      key={`${item.environmentId}:${item.key}`}
+                      className={desk.tile}
+                      data-work-state="ready"
+                    >
+                      <Link
+                        to="/$environmentId/$threadId"
+                        params={{ environmentId: item.environmentId, threadId: item.threadId }}
+                      >
+                        <strong>{item.title}</strong>
+                        <small>{inboxSummary(item.summary) || "Finished"}</small>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+                <Link to="/inbox" className={desk.more}>
+                  Review all →
+                </Link>
+              </section>
+            )}
             {WORK_GROUPS.map((group) => {
               const groupRows = rows.filter((row) => group.states.includes(row.state));
               if (!groupRows.length) return null;
@@ -414,7 +480,7 @@ export function ConversationList({
                               disabled={!canWrite || pending !== null || running}
                               onClick={() => void update(thread, false)}
                             >
-                              Send to Inbox
+                              Send to review
                             </button>
                             <button
                               disabled={!canWrite || pending !== null || running}

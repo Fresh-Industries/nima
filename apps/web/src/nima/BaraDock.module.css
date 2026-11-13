@@ -1,4 +1,4 @@
-/* The hot zone along the left edge that calls the dock. */
+/* The hot zone along the dock's edge that calls it. */
 .edge {
   position: fixed;
   top: var(--workspace-topbar-height, 52px);
@@ -7,7 +7,20 @@
   z-index: 44;
   width: 6px;
 }
+.edge[data-edge="right"] {
+  right: 0;
+  left: auto;
+}
+.edge[data-edge="bottom"] {
+  top: auto;
+  right: 0;
+  width: auto;
+  height: 6px;
+}
+/* --rest is where the dock sits when shown, --away where it hides; a drag adds its offset. */
 .dock {
+  --rest: translate(0, -50%);
+  --away: translate(calc(-100% - 16px), -50%);
   position: fixed;
   top: calc(50% + var(--workspace-topbar-height, 52px) / 2);
   left: 12px;
@@ -24,12 +37,123 @@
     0 2px 6px -3px color-mix(in srgb, var(--nima-ink) 12%, transparent),
     0 12px 32px -16px color-mix(in srgb, var(--nima-ink) 26%, transparent);
   opacity: 0;
-  transform: translate(calc(-100% - 16px), -50%);
+  transform: var(--away);
+  touch-action: none;
+  user-select: none;
+}
+.dock[data-edge="right"] {
+  --away: translate(calc(100% + 16px), -50%);
+  right: 12px;
+  left: auto;
+}
+.dock[data-edge="bottom"] {
+  --rest: translate(-50%, 0);
+  --away: translate(-50%, calc(100% + 16px));
+  top: auto;
+  bottom: 12px;
+  left: 50%;
+  flex-direction: row;
 }
 .dock[data-revealed],
 .dock:focus-within {
   opacity: 1;
+  transform: var(--rest);
+}
+.dock[data-dragging] {
+  opacity: 1;
+  cursor: grabbing;
+  transition: none;
+  transform: translate(var(--drag-x, 0), var(--drag-y, 0)) var(--rest);
+}
+.dock[data-dragging] .flyout {
+  display: none;
+}
+.slot {
+  position: relative;
+  display: grid;
+}
+/* A tool's shortcuts, opening away from the dock's edge. The padding bridges the gap so the
+   pointer can travel from the tool to its shortcuts. */
+.flyout {
+  position: absolute;
+  top: 50%;
+  left: 100%;
+  z-index: 1;
+  display: grid;
+  gap: 1px;
+  min-width: 168px;
+  max-width: 240px;
+  margin-left: 14px;
+  padding: 6px;
+  border: 1px solid var(--nima-line);
+  border-radius: 12px;
+  font-size: 12px;
+  color: var(--nima-ink);
+  background: var(--nima-canvas);
+  box-shadow: 0 8px 24px -12px color-mix(in srgb, var(--nima-ink) 30%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-4px, -50%);
+}
+.flyout::before {
+  content: "";
+  position: absolute;
+  inset: 0 100% 0 -16px;
+}
+.dock[data-edge="right"] .flyout {
+  right: 100%;
+  left: auto;
+  margin: 0 14px 0 0;
+  transform: translate(4px, -50%);
+}
+.dock[data-edge="right"] .flyout::before {
+  inset: 0 -16px 0 100%;
+}
+.dock[data-edge="bottom"] .flyout {
+  top: auto;
+  bottom: 100%;
+  left: 50%;
+  margin: 0 0 14px;
+  transform: translate(-50%, 4px);
+}
+.dock[data-edge="bottom"] .flyout::before {
+  inset: 100% 0 -16px;
+}
+.slot:hover .flyout,
+.slot:focus-within .flyout {
+  opacity: 1;
+  pointer-events: auto;
   transform: translate(0, -50%);
+}
+.dock[data-edge="bottom"] .slot:hover .flyout,
+.dock[data-edge="bottom"] .slot:focus-within .flyout {
+  transform: translate(-50%, 0);
+}
+.flyout strong {
+  padding: 4px 8px 5px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.flyout small {
+  padding: 6px 8px 2px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--nima-muted);
+}
+.action {
+  overflow: hidden;
+  padding: 6px 8px;
+  border-radius: 7px;
+  color: var(--nima-sub);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.action:hover,
+.action:focus-visible {
+  color: var(--nima-ink);
+  background: var(--nima-side);
+  outline: none;
 }
 .tool {
   --tool-hue: #718092;
@@ -89,25 +213,19 @@
   border-radius: 3px;
   background: var(--tool-color);
 }
+.dock[data-edge="right"] .item[aria-current="page"]::before {
+  right: -7px;
+  left: auto;
+}
+.dock[data-edge="bottom"] .item[aria-current="page"]::before {
+  bottom: -7px;
+  left: auto;
+  width: 12px;
+  height: 3px;
+}
 .item:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
-}
-.label {
-  position: absolute;
-  left: calc(100% + 16px);
-  padding: 5px 10px;
-  border: 1px solid var(--nima-line);
-  border-radius: 8px;
-  font-size: 11px;
-  font-weight: 500;
-  white-space: nowrap;
-  color: var(--nima-ink);
-  background: var(--nima-canvas);
-  box-shadow: 0 4px 12px -6px color-mix(in srgb, var(--nima-ink) 22%, transparent);
-  opacity: 0;
-  pointer-events: none;
-  transform: translateX(-4px);
 }
 .add {
   --tool-color: var(--nima-muted);
@@ -120,14 +238,6 @@
   border-style: solid;
   color: var(--nima-ink);
   background: var(--nima-side);
-}
-.add[data-popup-open] .label {
-  opacity: 0;
-}
-.item:hover .label,
-.item:focus-visible .label {
-  opacity: 1;
-  transform: none;
 }
 .status {
   position: absolute;
@@ -152,6 +262,11 @@
   height: 1px;
   margin: 3px 0;
   background: var(--nima-line);
+}
+.dock[data-edge="bottom"] .divider {
+  width: 1px;
+  height: 20px;
+  margin: 0 3px;
 }
 .positioner {
   z-index: 130;
@@ -260,13 +375,13 @@
       background-color 150ms,
       border-color 150ms;
   }
-  .label {
+  .flyout {
     transition:
-      opacity 120ms,
-      transform 120ms;
+      opacity 130ms 60ms,
+      transform 130ms 60ms;
   }
-  .item:hover {
-    transform: translateX(2px) scale(1.04);
+  .slot:hover .item {
+    transform: scale(1.08);
   }
   .picker {
     transition:

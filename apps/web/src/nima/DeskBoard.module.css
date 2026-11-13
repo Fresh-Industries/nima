@@ -239,3 +239,16 @@
 .team button[data-work-state="needs-you"] small {
   color: var(--bara-state-needs-you);
 }
+
+.lane[data-work-state="review"] {
+  --lane-color: var(--bara-state-ready);
+  background: color-mix(in srgb, var(--bara-state-ready) 7%, var(--nima-side));
+}
+.more {
+  padding: 2px 4px;
+  font-size: 12px;
+  color: var(--nima-sub);
+}
+.more:hover {
+  color: var(--nima-ink);
+}

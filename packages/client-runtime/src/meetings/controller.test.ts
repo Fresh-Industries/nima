@@ -247,6 +247,15 @@ it("answers without the name in solo mode and after the talk button, one request
   f.controller.receive({ type: "device.input-start" });
   f.speech("solo-2", "And who owns it?", 12000, 12300);
   expect(f.device.setPlayback).toHaveBeenLastCalledWith(true);
+  // Alone with Pucko, finished work is reported without being asked.
+  f.controller.receive({ type: "device.input-end" });
+  f.controller.observe({
+    ...f.result,
+    requests: [{ requestId: "done", status: "completed", answer: "Saved.", delegationId: null }],
+  });
+  expect(f.device.send).toHaveBeenLastCalledWith(
+    expect.objectContaining({ type: "session.commentary.append" }),
+  );
   f.controller.setSolo(false);
   f.controller.receive({ type: "device.input-start" });
   f.speech("room-again", "Did you check in the right person?", 16000, 16300);

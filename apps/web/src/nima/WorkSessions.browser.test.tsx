@@ -236,10 +236,10 @@ it("creates personal Work with an existing Bot, keeps the objective in its own c
   await page
     .getByRole("listitem")
     .filter({ hasText: "Checkout fix" })
-    .getByRole("button", { name: "Send to Inbox", exact: true })
+    .getByRole("button", { name: "Send to review", exact: true })
     .click();
   await expect.poll(() => router.state.location.pathname).toBe("/inbox");
-  await expect.element(page.getByRole("heading", { name: "Inbox", exact: true })).toBeVisible();
+  await expect.element(page.getByRole("button", { name: /Waiting/ })).toBeVisible();
   await expect
     .element(page.getByRole("article").getByText("Checkout fix", { exact: true }))
     .toBeVisible();

@@ -19,6 +19,12 @@ Pucko; detailed conversations remain available through the meeting's work link.
 Pucko stays quiet during other conversation. Address him again to ask for a task's
 result. If your browser blocks sound, choose **Enable speaker**, then address Pucko again.
 
+Pucko keeps one conversation. The **Chat** panel beside him shows it: type to him,
+attach images or files, and read what he sends back. What you ask out loud lands in
+the same conversation, so he remembers earlier meetings. Meetings scoped to a
+project or coordinator keep their own conversation. With **Just me** on, he tells
+you when a task finishes instead of waiting to be asked.
+
 In **Pucko settings**, connect an OpenAI project key with GPT-Live access. The key
 is saved on the selected Bara server, so configure the Windows server when using
 Windows Bara. A coding subscription does not supply voice API access. You can

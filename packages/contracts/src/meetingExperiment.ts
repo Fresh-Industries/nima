@@ -78,9 +78,13 @@ export const MeetingExperimentResult = Schema.Struct({
   ),
 });
 export type MeetingExperimentResult = typeof MeetingExperimentResult.Type;
+/** Pucko's one lasting conversation: voice requests and his chat window share it. */
+export const PUCKO_HOME_THREAD_ID = ThreadId.make("pucko-home");
 export const PuckoSnapshot = Schema.Struct({
   configuration: PuckoConfiguration,
   meetings: Schema.Array(MeetingExperimentResult),
+  /** Absent on older servers; null when the conversation could not be prepared. */
+  homeThreadId: Schema.optional(Schema.NullOr(ThreadId)),
 });
 export type PuckoSnapshot = typeof PuckoSnapshot.Type;
 export class MeetingExperimentError extends Schema.TaggedError<MeetingExperimentError>()(

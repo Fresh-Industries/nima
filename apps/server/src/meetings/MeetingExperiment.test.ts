@@ -38,6 +38,8 @@ it.effect(
       creates = 0;
     const runtime = Layer.mock(ThreadManagement.ThreadManagementService)({
       getThreadRecords: () => Effect.succeed(projection),
+      // Pucko's lasting conversation exists once Work has created it.
+      getThreadShell: () => Effect.succeed(creates > 0 ? (projection.thread as never) : null),
       dispatch: (command) =>
         Effect.gen(function* () {
           if (rejectDispatch)
@@ -132,7 +134,7 @@ it.effect(
       yield* meetings.command("owner", invite);
       assert.equal(creates, 1);
       assert.lengthOf(commands, 1);
-      assert.equal(invited.threadId, "pucko-meeting");
+      assert.equal(invited.threadId, "pucko-home");
       assert.equal(invited.requests[0]?.status, "accepted");
       assert.include(
         (yield* meetings
@@ -163,7 +165,7 @@ it.effect(
       yield* meetings.command("owner", notes);
       yield* meetings.command("owner", notes);
       assert.lengthOf(commands, 2);
-      const threadId = ThreadId.make("pucko-meeting"),
+      const threadId = ThreadId.make("pucko-home"),
         runId = RunId.make("summary-run");
       const markdown = "## Decisions\nSimplify onboarding.\n\n## Action items\nOwner not stated.";
       projection = {

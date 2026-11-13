@@ -167,6 +167,7 @@ export class BrowserMeetingDevice implements MeetingDevice {
       output = new Float32Array(1024);
     let inputActive = false,
       outputActive = false,
+      inputLoud = 0,
       inputQuiet = 0,
       outputQuiet = 0,
       lastLevel = 0;
@@ -179,7 +180,11 @@ export class BrowserMeetingDevice implements MeetingDevice {
     this.sampler = setInterval(() => {
       const incoming = rms(this.inputMeter, input),
         outgoing = rms(this.outputMeter, output);
-      if (incoming > 0.018 && !inputActive) {
+      // Speech is sustained; a click, a cough or a chair is not. While Pucko speaks, his own
+      // voice also reaches the microphone, so interrupting him takes clearer, longer speech.
+      const loud = incoming > (outputActive ? 0.04 : 0.018);
+      inputLoud = loud ? inputLoud + 1 : 0;
+      if (inputLoud >= (outputActive ? 6 : 2) && !inputActive) {
         inputActive = true;
         this.onEvent({ type: "device.input-start" });
       }

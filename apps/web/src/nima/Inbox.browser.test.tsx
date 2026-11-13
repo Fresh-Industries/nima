@@ -100,7 +100,7 @@ it("shows a compact Inbox overview and opens the complete result in its conversa
   await page.getByRole("button", { name: "Revoke approval", exact: true }).click();
   await page.getByRole("button", { name: "Settled", exact: true }).click();
   await page.getByRole("button", { name: "Reopen review", exact: true }).click();
-  await page.getByRole("button", { name: /To review/ }).click();
+  await page.getByRole("button", { name: /Waiting/ }).click();
   await expect
     .element(page.getByRole("button", { name: "Approve one retry", exact: true }))
     .toBeVisible();

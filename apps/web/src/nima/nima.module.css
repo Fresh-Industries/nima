@@ -2216,6 +2216,15 @@
     background-color 150ms,
     border-color 150ms;
 }
+/* Tabs need the room: the search pill keeps its label only on wide windows. */
+@media (max-width: 1700px) {
+  .nima-topbar .bara-topbar-search {
+    width: auto;
+  }
+  .nima-topbar .bara-topbar-search > span {
+    display: none;
+  }
+}
 .nima-topbar .bara-topbar-search > span {
   flex: 1;
   min-width: 0;
