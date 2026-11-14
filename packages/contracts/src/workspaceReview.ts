@@ -74,6 +74,11 @@ export const WorkspaceReviewWriteInput = Schema.Union([
   }),
   Schema.Struct({ action: Schema.Literal("request"), threadId: ThreadId }),
   Schema.Struct({
+    action: Schema.Literal("rename"),
+    threadId: ThreadId,
+    title: TrimmedNonEmptyString.check(Schema.isMaxLength(240)),
+  }),
+  Schema.Struct({
     action: Schema.Literals(["settle", "reopen"]),
     key: TrimmedNonEmptyString,
     version: TrimmedNonEmptyString,

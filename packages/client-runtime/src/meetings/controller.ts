@@ -124,6 +124,7 @@ export class MeetingController {
   private pendingDelegations = new Set<string>();
   private handledDelegations = new Set<string>();
   private delivered = new Set<string>();
+  private sharedChat = new Set<string>();
   private readyAnswers: { id: string; delegationId: string | null; answer: string }[] = [];
   private utterance = "";
   private lastInputEnd = -1;
@@ -299,6 +300,7 @@ export class MeetingController {
     if (event.type === "session.started") {
       this.stage("Listening");
       this.update({ phase: "listening", character: "listening" });
+      if (this.state.result) this.shareChat(this.state.result);
       if (this.solo) this.announceSolo();
       return;
     }
@@ -535,7 +537,7 @@ export class MeetingController {
           id: `accepted:${delegationId}`,
           delegationId,
           answer:
-            "Bara accepted this request. Briefly say you have sent it to Bara and will share the result. Do not claim the provider has started or work is complete. Any required approvals still apply.",
+            "You have started on this request yourself. Say at most a few words, such as 'One sec' or 'Let me look'. Do not mention Bara, a handoff or anyone else, and do not claim it is finished.",
         });
         this.deliverAnswers();
       }
@@ -551,7 +553,7 @@ export class MeetingController {
           event_id: this.newId(),
           delegation_id: null,
           content:
-            "Bara could not confirm accepting this request. Stop the acknowledgement and remain quiet. Do not claim work started. The application is showing the failure for review.",
+            "You could not start on this request. Stop the acknowledgement and remain quiet. Do not claim work started. The application is showing the failure for review.",
         });
     }
   }
@@ -559,6 +561,7 @@ export class MeetingController {
   observe(result: MeetingExperimentResult) {
     if (result.id !== this.id || this.disposed) return;
     this.update({ result });
+    this.shareChat(result);
     for (const request of result.requests) {
       if (
         request.status !== "completed" ||
@@ -581,6 +584,24 @@ export class MeetingController {
     }
     this.deliverAnswers();
     this.character();
+  }
+  // Pucko's voice cannot read his chat; what is typed there reaches him as quiet context.
+  private shareChat(result: MeetingExperimentResult) {
+    if (this.state.phase !== "listening") return;
+    const fresh = (result.chat ?? []).filter((entry) => !this.sharedChat.has(entry.id));
+    if (!fresh.length) return;
+    for (const entry of fresh) this.sharedChat.add(entry.id);
+    this.device.send({
+      type: "session.instructions.append",
+      event_id: this.newId(),
+      delegation_id: null,
+      content: `Your chat, for context only. Do not speak about or reply to this notice.\n${fresh
+        .map(
+          (entry) =>
+            `${entry.role === "pucko" ? "You wrote in chat" : "The participant typed in chat"}: ${entry.text}`,
+        )
+        .join("\n")}`,
+    });
   }
   private deliverAnswers() {
     if (
@@ -612,7 +633,7 @@ export class MeetingController {
       type: "session.commentary.append",
       event_id: this.newId(),
       delegation_id: result.delegationId,
-      content: `Confirmed Bara result. Briefly report the useful outcome without reading Markdown: ${answer.slice(0, 1400)}`,
+      content: `This is your own finished answer. Say it in the first person as your reply, briefly and without reading Markdown. Do not mention Bara, a handoff or a result arriving: ${answer.slice(0, 1400)}`,
     });
   }
   /** Solo mode: one participant, so every utterance is addressed to Pucko. */

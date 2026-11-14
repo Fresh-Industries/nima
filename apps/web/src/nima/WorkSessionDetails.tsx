@@ -20,6 +20,8 @@ import {
 import { useProjects, useVisibleThreadShells } from "../state/entities";
 import { serverEnvironment } from "../state/server";
 import { useAtomCommand } from "../state/use-atom-command";
+import { threadEnvironment } from "../state/threads";
+import { useOrchestrationCommand } from "../state/use-orchestration-command";
 import { useBots } from "./useBots";
 import { useWorkspaceReview } from "./useWorkspaceReview";
 
@@ -32,6 +34,14 @@ export function WorkSessionHeader({ threadRef }: { threadRef: ScopedThreadRef })
   );
   const metadata = review.metadata.get(scopedThreadKey(threadRef));
   const [editing, setEditing] = useState(false);
+  const [error, setError] = useState("");
+  const canWrite = useAtomValue(
+    serverEnvironment.writeWorkspaceReview.permissionAtom(threadRef.environmentId),
+  );
+  const write = useAtomCommand(serverEnvironment.writeWorkspaceReview, { reportFailure: false });
+  const updateThread = useOrchestrationCommand(threadEnvironment.updateMetadata, {
+    reportFailure: false,
+  });
   if (
     !thread ||
     !metadata ||
@@ -44,10 +54,32 @@ export function WorkSessionHeader({ threadRef }: { threadRef: ScopedThreadRef })
     (project) =>
       project.environmentId === threadRef.environmentId && project.id === thread.projectId,
   );
+  // Says where the work happens; a session with no project is simply yours.
   const scope =
     metadata.configurationRevision && metadata.scopeProjectId === null
       ? "Personal"
-      : (project?.title ?? "Work session");
+      : project?.title
+        ? `in ${project.title}`
+        : "";
+  const title = metadata.title || thread.title;
+  const rename = async (next: string) => {
+    setError("");
+    const [saved] = await Promise.all([
+      write({
+        environmentId: threadRef.environmentId,
+        input: { action: "rename", threadId: threadRef.threadId, title: next },
+      }),
+      // The conversation carries the same name in tabs, search and history.
+      updateThread({
+        environmentId: threadRef.environmentId,
+        input: { threadId: threadRef.threadId, title: next },
+      }),
+    ]);
+    if (saved._tag !== "Success") {
+      const cause = squashAtomCommandFailure(saved);
+      setError(cause instanceof Error ? cause.message : "Could not rename this session.");
+    }
+  };
   const busy = Boolean(
     metadata.workPending ||
     metadata.assistantWorkPending ||
@@ -56,9 +88,15 @@ export function WorkSessionHeader({ threadRef }: { threadRef: ScopedThreadRef })
   );
   return (
     <>
-      <div className="flex min-w-0 items-center gap-4 border-b border-border/50 px-5 py-2 text-xs text-muted-foreground">
-        <span className="truncate">{scope}</span>
-        {coordinator ? (
+      <div className="flex min-w-0 items-center gap-3 border-b border-border/50 px-5 py-2 text-xs text-muted-foreground">
+        <SessionTitle
+          key={title}
+          title={title}
+          disabled={!canWrite}
+          onRename={(next) => void rename(next)}
+        />
+        <span className="shrink-0 truncate">{scope}</span>
+        {coordinator && (
           <Link
             to={coordinator.home ? "/" : "/bots"}
             search={
@@ -66,7 +104,7 @@ export function WorkSessionHeader({ threadRef }: { threadRef: ScopedThreadRef })
                 ? {}
                 : { environmentId: threadRef.environmentId, botId: coordinator.id }
             }
-            className="truncate hover:text-foreground"
+            className="shrink-0 truncate hover:text-foreground"
           >
             <BotAvatar
               avatar={coordinator.config.avatar}
@@ -76,8 +114,11 @@ export function WorkSessionHeader({ threadRef }: { threadRef: ScopedThreadRef })
             {coordinator.config.name}
             {coordinator.archived ? " · archived" : ""}
           </Link>
-        ) : (
-          <span>Unassigned</span>
+        )}
+        {error && (
+          <span role="alert" className="truncate text-destructive">
+            {error}
+          </span>
         )}
         <div className="ml-auto flex gap-2">
           <Button size="xs" variant="ghost" onClick={() => setEditing(true)}>
@@ -96,6 +137,50 @@ export function WorkSessionHeader({ threadRef }: { threadRef: ScopedThreadRef })
         />
       )}
     </>
+  );
+}
+/** The session's name; click it to rename. Enter saves, Escape cancels. */
+function SessionTitle({
+  title,
+  disabled,
+  onRename,
+}: {
+  title: string;
+  disabled: boolean;
+  onRename: (title: string) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    const next = draft?.trim();
+    setDraft(null);
+    if (next && next !== title) onRename(next);
+  };
+  if (draft === null)
+    return (
+      <button
+        type="button"
+        className="min-w-0 truncate rounded-sm text-sm font-medium text-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:no-underline"
+        aria-label={`Rename session: ${title}`}
+        disabled={disabled}
+        onClick={() => setDraft(title)}
+      >
+        {title}
+      </button>
+    );
+  return (
+    <input
+      className="min-w-0 flex-1 rounded-sm border border-border bg-background px-2 py-0.5 text-sm font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      aria-label="Session title"
+      autoFocus
+      maxLength={240}
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") commit();
+        if (event.key === "Escape") setDraft(null);
+      }}
+    />
   );
 }
 function CoordinatorEditor({
@@ -179,7 +264,7 @@ function CoordinatorEditor({
                     setSelection(event.target.value ? BotId.make(event.target.value) : null)
                   }
                 >
-                  <option value="">Unassigned</option>
+                  <option value="">No coordinator</option>
                   {directory.bots
                     .filter((bot) => !bot.archived || bot.id === metadata.coordinatorBotId)
                     .map((bot) => (

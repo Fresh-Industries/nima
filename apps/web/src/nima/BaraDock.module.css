@@ -414,3 +414,79 @@
     display: none;
   }
 }
+
+/* A sliver on the edge shows where the dock hides. */
+.peek {
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  width: 4px;
+  height: 44px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--nima-ink) 22%, transparent);
+  transform: translateY(-50%);
+  transition: opacity 160ms;
+}
+.peek[data-hidden] {
+  opacity: 0;
+}
+.edge[data-edge="right"] .peek {
+  right: 2px;
+  left: auto;
+}
+.edge[data-edge="bottom"] .peek {
+  top: auto;
+  bottom: 2px;
+  left: 50%;
+  width: 44px;
+  height: 4px;
+  transform: translateX(-50%);
+}
+/* The handle that moves the whole dock; tools themselves drag to reorder. */
+.grip {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 12px;
+  border-radius: 6px;
+  color: var(--nima-muted);
+  cursor: grab;
+}
+.grip:hover {
+  color: var(--nima-ink);
+  background: var(--nima-side);
+}
+.dock[data-edge="bottom"] .grip {
+  width: 12px;
+  height: 42px;
+}
+.dock[data-edge="bottom"] .grip svg {
+  transform: rotate(90deg);
+}
+.slot {
+  cursor: grab;
+}
+.dock[data-reordering] {
+  cursor: grabbing;
+}
+.dock[data-reordering] .flyout {
+  display: none;
+}
+.dock[data-reordering="pucko"] [data-tool-slot="pucko"] .item,
+.dock[data-reordering="desk"] [data-tool-slot="desk"] .item,
+.dock[data-reordering="studio"] [data-tool-slot="studio"] .item,
+.dock[data-reordering="live"] [data-tool-slot="live"] .item,
+.dock[data-reordering="library"] [data-tool-slot="library"] .item,
+.dock[data-reordering="goals"] [data-tool-slot="goals"] .item,
+.dock[data-reordering="bots"] [data-tool-slot="bots"] .item,
+.dock[data-reordering="projects"] [data-tool-slot="projects"] .item,
+.dock[data-reordering="settings"] [data-tool-slot="settings"] .item {
+  border-color: color-mix(in srgb, var(--tool-color) 45%, transparent);
+  box-shadow: 0 8px 20px -8px color-mix(in srgb, var(--nima-ink) 45%, transparent);
+  transform: scale(1.14);
+}
+
+.flyout:has(> strong:only-child) {
+  min-width: 0;
+  white-space: nowrap;
+}

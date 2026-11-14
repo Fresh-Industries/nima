@@ -17,7 +17,7 @@ import { filePreviewKind } from "@t3tools/shared/filePreview";
 import { imageMimeType } from "@t3tools/shared/image";
 import { videoMimeType } from "@t3tools/shared/video";
 
-/** The working row while T3 Code's own compaction runs. */
+/** The working row while Bara's own compaction runs. */
 export const IDLE_COMPACTING_LABELS = {
   beforeCacheExpires: "Compacting before the cache expires…",
   onReturn: "Compacting…",
@@ -86,6 +86,17 @@ export function resolveUserMessagePresentation(message: {
       guestName: guest.name,
     };
   }
+  // A spoken request is stored with its rules and meeting text for the agent; people see
+  // what was said.
+  const spoken = message.id?.startsWith("meeting:")
+    ? message.text.split("\n\nREQUEST:\n").at(-1)
+    : undefined;
+  if (spoken !== undefined && spoken !== message.text)
+    return {
+      text: spoken.replace(/^[\s.,;:!?]+/, ""),
+      attribution: null,
+      scheduledTaskId: undefined,
+    };
   if (message.scheduledTaskId !== undefined) {
     return {
       text: message.text,

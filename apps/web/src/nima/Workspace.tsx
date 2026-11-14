@@ -10,12 +10,11 @@ import {
 } from "@t3tools/contracts";
 import { newThreadId } from "../lib/utils";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
-import { useBots, useOpenBotConversation } from "./useBots";
+import { useBots } from "./useBots";
 import { BotAvatar } from "./BotAvatar";
 import { usePersonalAssistant } from "./usePersonalAssistant";
 import { RelativeTime } from "../components/RelativeTime";
 import {
-  botActivity,
   needsYouReason,
   threadNeedsYou,
   threadWorkState,
@@ -131,7 +130,13 @@ export function markSessionTransition(tile: HTMLElement) {
   }, 700);
 }
 
-const REVIEW_LANE_LIMIT = 4;
+// The Desk reads top to bottom by how much each thing wants from you.
+const DESK_SECTIONS: { id: string; label: string; states: readonly WorkState[] }[] = [
+  { id: "needs-you", label: "Needs you", states: ["needs-you"] },
+  { id: "review", label: "To review", states: [] },
+  { id: "working", label: "Working", states: ["working", "queued"] },
+  { id: "idle", label: "Idle", states: ["ready", "stopped"] },
+];
 
 const WORK_STATE_ORDER: Record<WorkState, number> = {
   "needs-you": 0,
@@ -172,24 +177,9 @@ export function ConversationList({
   review?: ReactNode;
   new?: true;
 }) {
-  const { active, review, threads } = useWorkspaceThreads();
+  const { active, review } = useWorkspaceThreads();
   const navigate = useNavigate();
   const team = useBots();
-  const openBot = useOpenBotConversation(team.environmentId);
-  // Only Bots doing something real right now; an idle team is not news.
-  const onIt = team.bots.flatMap((bot) => {
-    if (bot.home || bot.archived) return [];
-    const now = botActivity({
-      bot,
-      environmentId: team.environmentId,
-      threads,
-      metaFor: (thread) =>
-        review.metadata.get(
-          scopedThreadKey({ environmentId: thread.environmentId, threadId: thread.id }),
-        ),
-    });
-    return now ? [{ bot, now }] : [];
-  });
   const { environments } = useEnvironments();
   const projects = useProjects();
   const project = projects.find(
@@ -197,6 +187,8 @@ export function ConversationList({
   );
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(Boolean(startNew));
+  const [draft, setDraft] = useState("");
+  const [showIdle, setShowIdle] = useState(false);
   const router = useRouter();
   const [managingTeams, setManagingTeams] = useState(false);
   const [error, setError] = useState("");
@@ -231,6 +223,20 @@ export function ConversationList({
     const count = rows.filter((row) => group.states.includes(row.state)).length;
     return count ? [`${count} ${group.label.toLowerCase()}`] : [];
   }).join(" · ");
+  const urgent =
+    toReview.length +
+    rows.filter((row) => row.state === "needs-you" || row.state === "working").length;
+  const settle = async (item: (typeof toReview)[number]) => {
+    if (pending) return;
+    setPending(item.key);
+    setError("");
+    const result = await write({
+      environmentId: item.environmentId,
+      input: { action: "settle", key: item.key, version: item.version },
+    });
+    if (result._tag !== "Success") setError(formatEnvironmentQueryError(result.cause));
+    setPending(null);
+  };
   const update = async (thread: EnvironmentThreadShell, retire: boolean) => {
     if (pending) return;
     setPending(keyFor(thread));
@@ -247,10 +253,10 @@ export function ConversationList({
   };
   return (
     <main className={styles["nima-page"]}>
-      <header className={styles["nima-page-header"]}>
+      <header className={desk.header}>
         <div>
-          <h1>{project?.title ?? "Desk"}</h1>
-          {view !== "projects" && (summary || review.pendingCount > 0) && (
+          <h1>{project?.title ?? (reviewPage ? "To review" : "Desk")}</h1>
+          {!reviewPage && view !== "projects" && (summary || review.pendingCount > 0) && (
             <p>
               {[summary, review.pendingCount ? `${review.pendingCount} to review` : ""]
                 .filter(Boolean)
@@ -258,69 +264,62 @@ export function ConversationList({
             </p>
           )}
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            className="text-sm text-muted-foreground hover:text-foreground"
-            onClick={() => setManagingTeams(true)}
-          >
-            Project teams
-          </button>
-          <button
-            className={styles["nima-action"]}
-            onClick={() =>
-              view === "projects" ? openCommandPalette({ open: "add-project" }) : setCreating(true)
-            }
-          >
-            <Plus size={15} />
-            {view === "projects" ? "Add project" : "Focus session"}
-          </button>
-        </div>
+        <nav aria-label="Desk views">
+          {(reviewPage || view === "projects" || projectId || botId) && (
+            <Link to="/work" search={{}}>
+              ← Desk
+            </Link>
+          )}
+          {view !== "projects" && (
+            <Link to="/work" search={{ view: "projects" }}>
+              Projects
+            </Link>
+          )}
+          <button onClick={() => setManagingTeams(true)}>Project teams</button>
+          {view === "projects" && (
+            <button onClick={() => openCommandPalette({ open: "add-project" })}>
+              <Plus size={14} /> Add project
+            </button>
+          )}
+        </nav>
       </header>
-      <nav className={styles["bara-work-tabs"]} aria-label="Work views">
-        <Link
-          to="/work"
-          search={{}}
-          aria-current={!view && !projectId && !reviewPage ? "page" : undefined}
-        >
-          Sessions
-        </Link>
-        <Link to="/inbox" aria-current={reviewPage ? "page" : undefined}>
-          To review{review.pendingCount ? ` · ${review.pendingCount}` : ""}
-        </Link>
-        <Link
-          to="/work"
-          search={{ view: "projects" }}
-          aria-current={view === "projects" ? "page" : undefined}
-        >
-          Projects
-        </Link>
-        {project && <span>{project.title}</span>}
-      </nav>
       {reviewPage ? (
         reviewPage
       ) : view === "projects" ? (
         <WorkProjects query={query} onQuery={setQuery} />
       ) : (
         <>
-          {botId && (
-            <p className="text-sm text-muted-foreground">
-              Work coordinated by this Bot.{" "}
-              <Link to="/work" search={{}}>
-                View all work →
-              </Link>
-            </p>
-          )}
-          <div className={styles["nima-list-toolbar"]}>
-            <label className={styles["nima-search"]}>
-              <Search size={15} />
+          <form
+            className={desk.composer}
+            onSubmit={(event) => {
+              event.preventDefault();
+              setCreating(true);
+            }}
+          >
+            <input
+              aria-label="Start new work"
+              placeholder={
+                project ? `What should we work on in ${project.title}?` : "What should we work on?"
+              }
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+            />
+            <button type="submit" aria-label="New session">
+              <ArrowUpRight size={16} />
+            </button>
+          </form>
+          {botId && <p className="text-sm text-muted-foreground">Work coordinated by this Bot.</p>}
+          {rows.length + toReview.length > 6 && (
+            <label className={desk.filter}>
+              <Search size={14} />
               <input
                 aria-label="Search conversations"
-                placeholder="Search conversations…"
+                placeholder="Filter…"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
               />
             </label>
-          </div>
+          )}
           {error && <p role="alert">{error}</p>}
           {review.errors.map((message) => (
             <p role="alert" key={message}>
@@ -336,184 +335,160 @@ export function ConversationList({
             )
             .map((host) => (
               <p key={host.environmentId} className="text-sm text-muted-foreground">
-                {host.label} needs a Bara backend for Inbox and Studio. Its conversations are still
+                {host.label} needs a Bara backend for review and Studio. Its conversations are still
                 available.
               </p>
             ))}
-          {onIt.length > 0 && (
-            <section className={desk.team} aria-label="Bots at work">
-              {onIt.map(({ bot, now }) => (
-                <button
-                  key={bot.id}
-                  type="button"
-                  onClick={() => void openBot.openConversation(bot)}
-                  data-work-state={now.state}
-                >
-                  <span aria-hidden>
-                    <BotAvatar
-                      avatar={bot.config.avatar}
-                      name={bot.config.name}
-                      seed={bot.id}
-                      fill
-                    />
-                  </span>
-                  <strong>{bot.config.name}</strong>
-                  <small>{now.text}</small>
-                </button>
-              ))}
-            </section>
-          )}
-          <div className={desk.board}>
-            {toReview.length > 0 && (
-              <section aria-label="To review" className={desk.lane} data-work-state="review">
+          {DESK_SECTIONS.map((section) => {
+            const sessionRows = rows.filter((row) => section.states.includes(row.state));
+            const reviews = section.id === "review" ? toReview : [];
+            const count = sessionRows.length + reviews.length;
+            if (!count) return null;
+            // Idle work steps aside when something more pressing is on the Desk.
+            const foldable = section.id === "idle" && urgent > 0 && count > 3;
+            const folded = foldable && !showIdle;
+            return (
+              <section
+                key={section.id}
+                aria-label={section.label}
+                className={desk.section}
+                data-section={section.id}
+              >
                 <h2>
-                  <WorkStateDot state="ready" />
-                  To review
-                  <span>{review.pendingCount || toReview.length}</span>
+                  {section.label}
+                  <span>{section.id === "review" ? review.pendingCount || count : count}</span>
+                  {foldable && (
+                    <button aria-expanded={!folded} onClick={() => setShowIdle(folded)}>
+                      {folded ? "Show" : "Hide"}
+                    </button>
+                  )}
+                  {section.id === "review" && <Link to="/inbox">Open review →</Link>}
                 </h2>
-                <ul>
-                  {toReview.slice(0, REVIEW_LANE_LIMIT).map((item) => (
-                    <li
-                      key={`${item.environmentId}:${item.key}`}
-                      className={desk.tile}
-                      data-work-state="ready"
-                    >
-                      <Link
-                        to="/$environmentId/$threadId"
-                        params={{ environmentId: item.environmentId, threadId: item.threadId }}
-                      >
-                        <strong>{item.title}</strong>
-                        <small>{inboxSummary(item.summary) || "Finished"}</small>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-                <Link to="/inbox" className={desk.more}>
-                  Review all →
-                </Link>
-              </section>
-            )}
-            {WORK_GROUPS.map((group) => {
-              const groupRows = rows.filter((row) => group.states.includes(row.state));
-              if (!groupRows.length) return null;
-              return (
-                <section
-                  key={group.label}
-                  aria-label={group.label}
-                  className={desk.lane}
-                  data-work-state={group.states[0]}
-                >
-                  <h2>
-                    <WorkStateDot state={group.states[0]!} />
-                    {group.label}
-                    <span>{groupRows.length}</span>
-                  </h2>
+                {!folded && (
                   <ul>
-                    {groupRows.map(({ thread, key, meta, state }) => {
+                    {reviews.map((item) => (
+                      <li key={`${item.environmentId}:${item.key}`} className={desk.row}>
+                        <Link
+                          to="/$environmentId/$threadId"
+                          params={{ environmentId: item.environmentId, threadId: item.threadId }}
+                          viewTransition={!prefersReducedMotion()}
+                          onClick={(event) => markSessionTransition(event.currentTarget)}
+                        >
+                          <WorkStateDot state="ready" />
+                          <span className={desk.main}>
+                            <strong>{item.title}</strong>
+                            <small>{inboxSummary(item.summary) || "Finished"}</small>
+                          </span>
+                          <span className={desk.when}>
+                            <RelativeTime timestamp={item.completedAt} />
+                          </span>
+                          <span className={desk.cta}>Review</span>
+                        </Link>
+                        <div className={desk.actions}>
+                          <button disabled={pending !== null} onClick={() => void settle(item)}>
+                            Settle
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                    {sessionRows.map(({ thread, key, meta, state }) => {
                       const running = state === "working" || state === "queued";
                       const canWrite = review.hosts.find(
                         (host) => host.environmentId === thread.environmentId,
                       )?.canWrite;
                       const startedAt = thread.runtime?.activityStartedAt;
                       const title = meta?.title || focus[key]?.title || thread.title;
+                      const bot = team.bots.find(
+                        (entry) =>
+                          entry.id === meta?.coordinatorBotId &&
+                          team.environmentId === thread.environmentId,
+                      );
                       return (
-                        <li key={key} className={desk.tile} data-work-state={state}>
+                        <li key={key} className={desk.row} data-work-state={state}>
                           <Link
                             to="/$environmentId/$threadId"
                             params={{ environmentId: thread.environmentId, threadId: thread.id }}
                             viewTransition={!prefersReducedMotion()}
                             onClick={(event) => markSessionTransition(event.currentTarget)}
                           >
-                            {(state === "needs-you" || running) && (
-                              <span className={desk.status} data-work-state={state}>
-                                <WorkStateDot state={state} />
+                            <WorkStateDot state={state} />
+                            <span className={desk.main}>
+                              <strong>{title}</strong>
+                              <small>
                                 {state === "needs-you"
                                   ? needsYouReason(thread)
-                                  : WORK_STATE_LABEL[state]}
-                                {running && startedAt ? (
-                                  <>
-                                    {" · "}
-                                    <RelativeTime timestamp={startedAt} />
-                                  </>
-                                ) : null}
+                                  : meta?.objective ||
+                                    focus[key]?.objective ||
+                                    thread.source.latestVisibleMessage?.text ||
+                                    WORK_STATE_LABEL[state]}
+                              </small>
+                            </span>
+                            {bot && (
+                              <span className={desk.who}>
+                                <span aria-hidden>
+                                  <BotAvatar
+                                    avatar={bot.config.avatar}
+                                    name={bot.config.name}
+                                    seed={bot.id}
+                                    fill
+                                  />
+                                </span>
+                                {bot.config.name}
                               </span>
                             )}
-                            <strong>{title}</strong>
-                            <small>
-                              {meta?.objective ||
-                                focus[key]?.objective ||
-                                thread.source.latestVisibleMessage?.text ||
-                                "Focus session"}
-                            </small>
-                            {(() => {
-                              const bot = team.bots.find(
-                                (entry) =>
-                                  entry.id === meta?.coordinatorBotId &&
-                                  team.environmentId === thread.environmentId,
-                              );
-                              return bot ? (
-                                <span className={desk.assignee}>
-                                  <span aria-hidden>
-                                    <BotAvatar
-                                      avatar={bot.config.avatar}
-                                      name={bot.config.name}
-                                      seed={bot.id}
-                                      fill
-                                    />
-                                  </span>
-                                  {bot.config.name}
-                                </span>
-                              ) : null;
-                            })()}
-                          </Link>
-                          <div className={desk.actions}>
-                            {thread.latestRun?.completedAt && (
-                              <SaveResultButton
-                                key={thread.latestRun.runId}
-                                environmentId={thread.environmentId}
-                                threadId={thread.id}
-                                runId={thread.latestRun.runId}
-                                title={title}
+                            <span className={desk.when}>
+                              <RelativeTime
+                                timestamp={running && startedAt ? startedAt : thread.updatedAt}
                               />
-                            )}
-                            <button
-                              disabled={!canWrite || pending !== null || running}
-                              onClick={() => void update(thread, false)}
-                            >
-                              Send to review
-                            </button>
-                            <button
-                              disabled={!canWrite || pending !== null || running}
-                              onClick={() => void update(thread, true)}
-                            >
-                              Retire
-                            </button>
-                          </div>
+                            </span>
+                            <span className={desk.cta}>
+                              {state === "needs-you" ? "Reply" : "Open"}
+                            </span>
+                          </Link>
+                          {!running && state !== "needs-you" && (
+                            <div className={desk.actions}>
+                              {thread.latestRun?.completedAt && (
+                                <SaveResultButton
+                                  key={thread.latestRun.runId}
+                                  environmentId={thread.environmentId}
+                                  threadId={thread.id}
+                                  runId={thread.latestRun.runId}
+                                  title={title}
+                                />
+                              )}
+                              <button
+                                disabled={!canWrite || pending !== null}
+                                onClick={() => void update(thread, false)}
+                              >
+                                Send to review
+                              </button>
+                              <button
+                                disabled={!canWrite || pending !== null}
+                                onClick={() => void update(thread, true)}
+                              >
+                                Retire
+                              </button>
+                            </div>
+                          )}
                         </li>
                       );
                     })}
                   </ul>
-                </section>
-              );
-            })}
-          </div>
-          {!items.length && (
+                )}
+              </section>
+            );
+          })}
+          {!items.length && !toReview.length && (
             <div className={styles["nima-empty"]}>
               <span>
                 <Layers size={26} />
               </span>
-              <h2>{query ? "No matching conversations" : "Nothing in progress"}</h2>
+              <h2>{query ? "Nothing matches" : "Your Desk is clear"}</h2>
               <p>
                 {query
-                  ? "Try a different search."
-                  : `Start a Focus session${project ? ` in ${project.title}` : ""} and it stays here while the agent works.`}
+                  ? "Try a different filter."
+                  : `Type what you want done${project ? ` in ${project.title}` : ""} above and it stays here while the agent works.`}
               </p>
-              {!query && review.pendingCount > 0 && (
-                <Link to="/inbox" className={styles["bara-empty-link"]}>
-                  {review.pendingCount} finished{" "}
-                  {review.pendingCount === 1 ? "result is" : "results are"} waiting in Inbox →
-                </Link>
-              )}
             </div>
           )}
         </>
@@ -521,11 +496,13 @@ export function ConversationList({
       {managingTeams && <ProjectTeamsDialog onClose={() => setManagingTeams(false)} />}
       {creating && (
         <NewFocus
+          objective={draft}
           {...(botId ? { coordinatorBotId: botId } : {})}
           {...(environmentId ? { environmentId } : {})}
           {...(projectId ? { projectId } : {})}
           onClose={() => {
             setCreating(false);
+            setDraft("");
             if (startNew && router.state.location.pathname === "/work")
               void navigate({
                 from: "/work",
@@ -616,8 +593,11 @@ function NewFocus({
   environmentId: target,
   coordinatorBotId,
   projectId: initialProjectId,
+  objective: initialObjective = "",
 }: {
   onClose: () => void;
+  /** What was typed on the Desk; its first words become the title. */
+  objective?: string;
   environmentId?: EnvironmentId;
   coordinatorBotId?: BotId;
   projectId?: ProjectId;
@@ -642,8 +622,10 @@ function NewFocus({
   );
   const [projectId, setProjectId] = useState<ProjectId | null>(initialProjectId ?? null);
   const [botId, setBotId] = useState<BotId | null>(coordinatorBotId ?? HOME_BOT_ID);
-  const [title, setTitle] = useState("");
-  const [objective, setObjective] = useState("");
+  const [title, setTitle] = useState(() =>
+    initialObjective.trim().split(/\s+/).slice(0, 6).join(" ").slice(0, 60),
+  );
+  const [objective, setObjective] = useState(initialObjective.trim());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const attempt = useRef<{ key: string; threadId: ReturnType<typeof newThreadId> } | null>(null);

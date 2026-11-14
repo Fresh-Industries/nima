@@ -1,0 +1,105 @@
+.card {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--background);
+  box-shadow: 0 8px 24px -18px color-mix(in srgb, var(--foreground) 45%, transparent);
+}
+.card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.card small {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.bot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.bot > span {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 12px;
+  background: var(--muted);
+}
+.card strong {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+.card p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+.card p[role="alert"] {
+  color: var(--destructive);
+}
+.card input,
+.card textarea {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--foreground);
+  background: var(--background);
+  outline: none;
+}
+.card input:focus-visible,
+.card textarea:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--ring);
+}
+.card footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+.card footer > * {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+.card footer > *:hover:not(:disabled) {
+  color: var(--foreground);
+  background: var(--muted);
+}
+.card footer > *:disabled {
+  opacity: 0.5;
+}
+.card footer > *:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.card footer > .primary,
+.card footer > .primary:hover:not(:disabled) {
+  color: var(--background);
+  background: var(--foreground);
+}
+.pending {
+  font-size: 13px;
+  color: var(--muted-foreground);
+}

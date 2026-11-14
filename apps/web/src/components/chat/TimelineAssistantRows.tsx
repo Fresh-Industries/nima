@@ -66,7 +66,7 @@ export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind
         data-nima-assistant-bubble={isBaraChat || undefined}
       >
         <MessageAuthorHeading>
-          {isPersonalChat ? personalAgentName : (bot?.config.name ?? "T3 Code")}
+          {isPersonalChat ? personalAgentName : (bot?.config.name ?? "Bara")}
         </MessageAuthorHeading>
         <div data-thread-find-text="true">
           <AssistantCitationSource

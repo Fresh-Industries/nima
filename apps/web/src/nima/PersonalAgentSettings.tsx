@@ -14,6 +14,7 @@ import { useAtomCommand } from "../state/use-atom-command";
 import { useScheduledBots } from "../state/scheduledTasks";
 import { usePersonalAssistant } from "./usePersonalAssistant";
 import { PersonalMemorySettings } from "./PersonalMemorySettings";
+import { AssistantBrief } from "./AssistantBrief";
 import styles from "./nima.module.css";
 
 export function PersonalAgentSettings() {
@@ -77,6 +78,7 @@ function AssistantPreferences({
   };
   return (
     <div className="space-y-8">
+      <AssistantBrief />
       <form
         className={styles["nima-personal-settings"]}
         onSubmit={(event) => {

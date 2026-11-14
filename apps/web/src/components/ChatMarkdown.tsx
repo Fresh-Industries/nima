@@ -1,4 +1,6 @@
 import { buildFileLinkParentSuffixByPath, fileLinkLabel } from "@t3tools/shared/fileLinks";
+import { PROPOSAL_FENCE } from "../nima/assistantBrief";
+import { WorkProposalCard } from "../nima/WorkProposalCard";
 import {
   isWindowsDrivePathHref,
   normalizeMarkdownLinkDestination,
@@ -1589,6 +1591,13 @@ const CHAT_MARKDOWN_COMPONENTS = {
     ) {
       return <MarkdownMath tex={codeBlock.code} display focusable={!inline} />;
     }
+    if (language === PROPOSAL_FENCE)
+      return (
+        <WorkProposalCard
+          code={codeBlock.code}
+          streaming={isStreaming && !isClosedCodeFence(node, text, codeBlock.code)}
+        />
+      );
     const fenceTitle = extractFenceTitle(extractPreCodeMeta(node));
     const highlightedCode = (
       <RenderErrorBoundary

@@ -67,6 +67,16 @@ export const MeetingExperimentResult = Schema.Struct({
       delegationId: Schema.NullOr(Schema.String),
     }),
   ),
+  /** Recent typed chat in Pucko's conversation, so his voice knows what was written there. */
+  chat: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        role: Schema.Literals(["participant", "pucko"]),
+        text: Schema.String,
+      }),
+    ),
+  ),
   tasks: Schema.Array(
     Schema.Struct({
       id: Schema.String,

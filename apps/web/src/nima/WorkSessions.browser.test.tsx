@@ -152,7 +152,7 @@ it("creates personal Work with an existing Bot, keeps the objective in its own c
     )
     .toHaveValue("Verify checkout changes in this project.");
   await page.getByText("Close", { exact: true }).click();
-  await page.getByRole("button", { name: "Focus session", exact: true }).click();
+  await page.getByRole("button", { name: "New session", exact: true }).click();
   await page.getByRole("textbox", { name: "Title", exact: true }).fill("Learn photography");
   await page
     .getByRole("textbox", { name: "Objective", exact: true })
@@ -188,7 +188,7 @@ it("creates personal Work with an existing Bot, keeps the objective in its own c
   await select.selectOptions("");
   await page.getByRole("button", { name: "Save coordinator", exact: true }).click();
   await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
-  await expect.element(page.getByText("Unassigned", { exact: true })).toBeVisible();
+  await expect.element(page.getByRole("button", { name: /^Rename session: / })).toBeVisible();
   await page.screenshot({ path: "./.t3/work-session-light.png" });
   setAppearanceMode("dark");
   await page.screenshot({ path: "./.t3/work-session-dark.png" });
@@ -199,7 +199,7 @@ it("creates personal Work with an existing Bot, keeps the objective in its own c
   await page.screenshot({ path: "./.t3/work-session-narrow.png" });
   await page.viewport(1320, 900);
   await router.navigate({ to: "/work", search: { environmentId: ENVIRONMENT_ID, botId: lead.id } });
-  await page.getByRole("button", { name: "Focus session", exact: true }).click();
+  await page.getByRole("button", { name: "New session", exact: true }).click();
   await page.getByRole("textbox", { name: "Title", exact: true }).fill("Checkout fix");
   await page.getByRole("textbox", { name: "Objective", exact: true }).fill("Diagnose checkout.");
   await page.getByText("Project & environment", { exact: true }).click();

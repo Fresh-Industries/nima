@@ -271,6 +271,17 @@ it.effect(
         yield* seedRun(id, `${id}-result`, 1);
         yield* sql`INSERT INTO orchestration_v2_projection_subagents(subagent_id,thread_id,parent_node_id,provider,child_thread_id,origin,status,updated_at,payload_json) VALUES(${`task-${id}`},${parent},'root','devReplay',${id},${origin},'completed',${at},'{}')`;
       }
+      yield* review.write({
+        action: "rename",
+        threadId: ThreadId.make("session"),
+        title: "Renamed",
+      });
+      assert.equal(
+        (yield* review.read({ ...input, threadIds: [ThreadId.make("session")] })).items.find(
+          (item) => item.threadId === "session",
+        )?.title,
+        "Renamed",
+      );
       // A session's own delegation is a Work session too: it can be sent to the Inbox.
       yield* sql`INSERT INTO workspace_bot_delegations(thread_id,parent_thread_id,root_thread_id,depth,state,title,objective) VALUES('nested','session','session',1,'completed','nested','')`;
       yield* review.write({ action: "request", threadId: ThreadId.make("nested") });

@@ -1,113 +1,254 @@
-/* The Desk: one lane per status, side by side when there is room and stacked when not. */
-.board {
-  margin-top: 6px;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
-  align-items: start;
-  gap: 14px;
+/* The Desk: one calm list, read top to bottom by how much each thing wants from you. */
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
 }
-.lane {
-  --lane-color: var(--bara-state-ready);
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-  padding: 10px;
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--nima-side) 70%, transparent);
+.header h1 {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--nima-ink);
 }
-.lane[data-work-state="needs-you"] {
-  --lane-color: var(--bara-state-needs-you);
+.header p {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--nima-sub);
 }
-.lane[data-work-state="working"] {
-  --lane-color: var(--bara-state-working);
+.header nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--nima-sub);
 }
-.lane[data-work-state="stopped"] {
-  --lane-color: var(--bara-state-stopped);
+.header nav > * {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
-.lane h2 {
+.header nav > *:hover {
+  color: var(--nima-ink);
+}
+.composer {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 2px 4px 4px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  height: 56px;
+  margin-bottom: 26px;
+  padding: 0 8px 0 20px;
+  border: 1px solid var(--nima-line);
+  border-radius: 18px;
+  background: var(--nima-canvas);
+  box-shadow: 0 10px 30px -18px color-mix(in srgb, var(--nima-ink) 40%, transparent);
+  transition: border-color 150ms;
+}
+.composer:focus-within {
+  border-color: color-mix(in srgb, var(--nima-accent) 45%, var(--nima-line));
+}
+.composer input {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  color: var(--nima-ink);
+  background: transparent;
+  outline: none;
+}
+.composer input::placeholder {
+  color: var(--nima-muted);
+}
+.composer button {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  color: var(--background);
+  background: var(--nima-ink);
+}
+.composer button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -10px 0 16px;
+  font-size: 13px;
+  color: var(--nima-muted);
+}
+.filter input {
+  flex: 1;
+  background: transparent;
+  outline: none;
   color: var(--nima-ink);
 }
-.lane h2 > span:last-child {
-  margin-left: auto;
+.section {
+  --section-color: var(--nima-muted);
+  margin-bottom: 22px;
+}
+.section[data-section="needs-you"] {
+  --section-color: var(--bara-state-needs-you);
+}
+.section[data-section="review"] {
+  --section-color: var(--bara-state-ready);
+}
+.section[data-section="working"] {
+  --section-color: var(--bara-state-working);
+}
+.section h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding: 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--section-color);
+}
+.section h2 > span {
   font-weight: 500;
   color: var(--nima-muted);
 }
-.lane ul {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
-  gap: 6px;
-}
-.tile {
-  position: relative;
-  border: 1px solid var(--nima-line);
-  border-radius: 12px;
-  background: var(--nima-canvas);
-  transition:
-    border-color 150ms,
-    box-shadow 150ms,
-    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-.tile:hover {
-  border-color: color-mix(in srgb, var(--lane-color) 45%, var(--nima-line));
-  box-shadow: 0 6px 18px -12px color-mix(in srgb, var(--nima-ink) 45%, transparent);
-}
-.tile > a {
-  display: grid;
-  gap: 4px;
-  padding: 11px 12px;
-  border-radius: inherit;
-  outline: none;
-}
-.tile > a:focus-visible {
-  box-shadow: 0 0 0 2px var(--ring);
-}
-.status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  font-size: 11px;
+.section h2 > a,
+.section h2 > button {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--nima-sub);
 }
-.status[data-work-state="needs-you"] {
-  color: var(--bara-state-needs-you);
-}
-.tile strong {
-  display: -webkit-box;
-  overflow: hidden;
-  font-size: 13px;
-  font-weight: 550;
-  line-height: 1.35;
+.section h2 > a:hover,
+.section h2 > button:hover {
   color: var(--nima-ink);
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
 }
-.tile small {
+.section ul {
   overflow: hidden;
-  font-size: 12px;
-  color: var(--nima-muted);
+  border: 1px solid var(--nima-line);
+  border-radius: 14px;
+  background: var(--nima-canvas);
+}
+.row {
+  position: relative;
+}
+.row + .row {
+  border-top: 1px solid var(--nima-line);
+}
+.row > a {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 56px;
+  padding: 9px 14px;
+  outline: none;
+  transition: background-color 120ms;
+}
+.row > a:hover,
+.row > a:focus-visible {
+  background: color-mix(in srgb, var(--nima-side) 70%, transparent);
+}
+.row > a:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--ring);
+}
+.main {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 1px;
+}
+.main strong,
+.main small {
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Actions stay out of the way until the tile is hovered or focused; touch always shows them. */
+.main strong {
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--nima-ink);
+}
+.main small {
+  font-size: 12px;
+  color: var(--nima-muted);
+}
+.row[data-work-state="needs-you"] .main small {
+  color: var(--bara-state-needs-you);
+}
+.who {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--nima-sub);
+}
+.who > span {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 12px;
+  background: var(--nima-side);
+}
+.when {
+  min-width: 64px;
+  font-size: 12px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--nima-muted);
+}
+.cta {
+  min-width: 62px;
+  padding: 5px 12px;
+  border: 1px solid var(--nima-line);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+  color: var(--nima-ink);
+}
+.section[data-section="needs-you"] .cta,
+.section[data-section="review"] .cta {
+  border-color: transparent;
+  color: var(--background);
+  background: var(--nima-ink);
+}
+/* Secondary actions wait beside the main one until the row is hovered or focused. */
 .actions {
+  position: absolute;
+  top: 50%;
+  right: 96px;
   display: flex;
-  flex-wrap: wrap;
   gap: 4px;
-  padding: 0 8px 8px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--nima-canvas);
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: opacity 120ms;
+}
+.row:hover .actions,
+.row:focus-within .actions {
+  opacity: 1;
+}
+/* The secondary actions take the place of the row's quieter details. */
+.row:has(.actions):hover :is(.who, .when),
+.row:has(.actions):focus-within :is(.who, .when) {
+  visibility: hidden;
 }
 .actions button {
-  height: 24px;
-  padding: 0 8px;
+  height: 26px;
+  padding: 0 10px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--nima-sub);
   background: var(--nima-side);
 }
@@ -117,25 +258,16 @@
 .actions button:disabled {
   opacity: 0.45;
 }
-@media (hover: hover) {
+@media (max-width: 720px) {
+  .who,
+  .when {
+    display: none;
+  }
   .actions {
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    padding: 2px;
-    border-radius: 999px;
-    background: var(--nima-canvas);
-    opacity: 0;
-    transition: opacity 120ms;
-  }
-  .tile:hover .actions,
-  .tile:focus-within .actions {
+    position: static;
+    padding: 0 14px 10px 35px;
     opacity: 1;
-  }
-}
-@media (prefers-reduced-motion: no-preference) {
-  .tile:hover {
-    transform: translateY(-1px);
+    transform: none;
   }
 }
 
@@ -166,89 +298,4 @@
   to {
     opacity: 0;
   }
-}
-
-/* The assigned Bot, quietly at the foot of its session. */
-.assignee {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 4px;
-  font-size: 11px;
-  color: var(--nima-sub);
-}
-.assignee > span {
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  font-size: 11px;
-  background: var(--nima-side);
-}
-
-/* Bots doing something right now. Hidden when the whole team is idle. */
-.team {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 2px 0 12px;
-}
-.team button {
-  display: inline-grid;
-  grid-template-columns: auto auto;
-  grid-template-rows: auto auto;
-  column-gap: 8px;
-  align-items: center;
-  max-width: 280px;
-  padding: 6px 12px 6px 6px;
-  border: 1px solid var(--nima-line);
-  border-radius: 999px;
-  text-align: left;
-  background: var(--nima-canvas);
-}
-.team button:hover {
-  border-color: color-mix(in srgb, var(--nima-ink) 18%, var(--nima-line));
-}
-.team button:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-.team button > span {
-  grid-row: span 2;
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  font-size: 16px;
-  background: var(--nima-side);
-}
-.team strong {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--nima-ink);
-}
-.team small {
-  overflow: hidden;
-  font-size: 11px;
-  color: var(--bara-state-working);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.team button[data-work-state="needs-you"] small {
-  color: var(--bara-state-needs-you);
-}
-
-.lane[data-work-state="review"] {
-  --lane-color: var(--bara-state-ready);
-  background: color-mix(in srgb, var(--bara-state-ready) 7%, var(--nima-side));
-}
-.more {
-  padding: 2px 4px;
-  font-size: 12px;
-  color: var(--nima-sub);
-}
-.more:hover {
-  color: var(--nima-ink);
 }

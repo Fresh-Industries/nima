@@ -200,7 +200,7 @@ describe("resolveUserMessagePresentation", () => {
     ).toEqual({ text: "Why?", attribution: "guest", scheduledTaskId: undefined, guestName: "Sam" });
   });
 
-  it("attributes older server-sent restart continuations to T3 Code, not another agent", () => {
+  it("attributes older server-sent restart continuations to Bara, not another agent", () => {
     const text = "Note: the T3 server restarted.";
     expect(
       resolveUserMessagePresentation({
@@ -232,5 +232,17 @@ describe("resolveUserMessagePresentation", () => {
         scheduledTaskId: "task:daily-audit",
       });
     }
+  });
+});
+
+describe("resolveUserMessagePresentation", () => {
+  it("shows a spoken Pucko request as what was said, without its rules and meeting text", () => {
+    const stored = {
+      id: "meeting:m1:r1",
+      role: "user",
+      text: 'Spoken to you, continued.\n\nMEETING TEXT (JSON string):\n"…"\n\nREQUEST:\n. Do you see it',
+    };
+    expect(resolveUserMessagePresentation(stored).text).toBe("Do you see it");
+    expect(resolveUserMessagePresentation({ ...stored, id: "typed" }).text).toBe(stored.text);
   });
 });

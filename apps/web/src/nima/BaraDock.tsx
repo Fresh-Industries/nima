@@ -6,6 +6,7 @@ import {
   Bot,
   Check,
   Folder,
+  GripHorizontal,
   Layers,
   Plus,
   Radio,
@@ -230,6 +231,56 @@ export function BaraDock() {
   const [edge, setEdge] = useState(readEdge);
   const dragged = useRef(false);
   const holdUntil = useRef(0);
+  const savePinned = (next: string[]) => {
+    try {
+      localStorage.setItem(PINNED_KEY, JSON.stringify(next));
+    } catch {
+      // Only a per-viewer convenience.
+    }
+  };
+  // Dragging a tool moves it among its neighbours: it changes places as the pointer crosses
+  // the middle of the next tool along the dock.
+  const reorder = (down: React.PointerEvent<HTMLElement>, slot: HTMLElement) => {
+    const dock = dockRef.current;
+    const id = slot.dataset.toolSlot;
+    if (!dock || !id) return;
+    let order: string[] | null = null;
+    const move = (event: PointerEvent) => {
+      if (
+        !dragged.current &&
+        Math.hypot(event.clientX - down.clientX, event.clientY - down.clientY) < DRAG_THRESHOLD
+      )
+        return;
+      dragged.current = true;
+      dock.dataset.reordering = id;
+      window.getSelection()?.removeAllRanges();
+      const horizontal = dock.dataset.edge === "bottom";
+      const pointer = horizontal ? event.clientX : event.clientY;
+      const slots = [...dock.querySelectorAll<HTMLElement>("[data-tool-slot]")];
+      const ids = slots.map((entry) => entry.dataset.toolSlot!);
+      // The tool lands after every other tool whose middle the pointer has passed.
+      const before = slots.filter((entry) => {
+        if (entry.dataset.toolSlot === id) return false;
+        const box = entry.getBoundingClientRect();
+        return pointer > (horizontal ? box.left + box.width / 2 : box.top + box.height / 2);
+      }).length;
+      const result = ids.filter((entry) => entry !== id);
+      result.splice(before, 0, id);
+      if (result.join() === ids.join()) return;
+      order = result;
+      setPinned(result);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      delete dock.dataset.reordering;
+      if (order) savePinned(order);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  };
   // The dock follows the pointer directly and commits its edge once, on release. The window
   // listens for the move so a fast drag that leaves the dock is still followed.
   const dragHandlers = {
@@ -237,6 +288,11 @@ export function BaraDock() {
       const dock = dockRef.current;
       if (down.button !== 0 || !dock) return;
       dragged.current = false;
+      const slot = (down.target as Element).closest<HTMLElement>("[data-tool-slot]");
+      if (slot) {
+        reorder(down, slot);
+        return;
+      }
       const move = (event: PointerEvent) => {
         const dx = event.clientX - down.clientX;
         const dy = event.clientY - down.clientY;
@@ -347,17 +403,12 @@ export function BaraDock() {
     );
   };
   const toggle = (id: string, on: boolean) => {
-    const next = on
-      ? TOOLS.map((tool) => tool.id).filter((tool) => tool === id || pinned.includes(tool))
-      : pinned.filter((tool) => tool !== id);
+    const next = on ? [...pinned, id] : pinned.filter((tool) => tool !== id);
     setPinned(next);
-    try {
-      localStorage.setItem(PINNED_KEY, JSON.stringify(next));
-    } catch {
-      // Only a per-viewer convenience.
-    }
+    savePinned(next);
   };
-  const tools = TOOLS.filter((tool) => pinned.includes(tool.id));
+  // Your order, not the catalogue's.
+  const tools = pinned.flatMap((id) => TOOLS.find((tool) => tool.id === id) ?? []);
   const focus = useNimaStore((state) => state.focus);
   const recent = [...active]
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
@@ -365,7 +416,9 @@ export function BaraDock() {
   const action = { className: styles.action, onClick: () => setRevealed(false) };
   return (
     <>
-      <div className={styles.edge} data-edge={edge} aria-hidden onPointerEnter={reveal} />
+      <div className={styles.edge} data-edge={edge} aria-hidden onPointerEnter={reveal}>
+        <span className={styles.peek} data-hidden={revealed || pickerOpen || undefined} />
+      </div>
       <nav
         ref={dockRef}
         className={styles.dock}
@@ -378,11 +431,19 @@ export function BaraDock() {
           if (!pickerOpen) conceal();
         }}
       >
+        <span className={styles.grip} aria-hidden>
+          <GripHorizontal size={14} />
+        </span>
         {tools.map(({ id, label, icon: Icon, link, matches, actions }) => {
           const current = matches(pathname, area);
           const status = id === "desk" ? workState : id === "live" && onAir ? "on-air" : null;
           return (
-            <div key={id} className={`${styles.slot} ${styles.tool}`} data-tool={id}>
+            <div
+              key={id}
+              className={`${styles.slot} ${styles.tool}`}
+              data-tool={id}
+              data-tool-slot={id}
+            >
               {link({
                 className: styles.item,
                 "aria-label": label,

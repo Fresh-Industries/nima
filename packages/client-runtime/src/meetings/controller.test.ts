@@ -247,6 +247,15 @@ it("answers without the name in solo mode and after the talk button, one request
   f.controller.receive({ type: "device.input-start" });
   f.speech("solo-2", "And who owns it?", 12000, 12300);
   expect(f.device.setPlayback).toHaveBeenLastCalledWith(true);
+  // What is typed in his chat reaches the voice once, as context.
+  const typed = { ...f.result, chat: [{ id: "c1", role: "participant", text: "storyboard" }] };
+  f.controller.observe(typed as MeetingExperimentResult);
+  f.controller.observe(typed as MeetingExperimentResult);
+  expect(
+    vi
+      .mocked(f.device.send)
+      .mock.calls.filter(([event]) => String(event.content).includes("storyboard")),
+  ).toHaveLength(1);
   // Alone with Pucko, finished work is reported without being asked.
   f.controller.receive({ type: "device.input-end" });
   f.controller.observe({

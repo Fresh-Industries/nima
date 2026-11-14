@@ -195,7 +195,18 @@ const make = Effect.gen(function* () {
             if (inserted.length && input.review && input.kind === "focus")
               yield* request(input.threadId);
           } else if (input.action === "request") yield* request(input.threadId);
-          else {
+          else if (input.action === "rename") {
+            yield* requireThread(input.threadId);
+            const [thread] = yield* sql<{
+              project_id: string;
+            }>`SELECT project_id FROM orchestration_v2_projection_threads WHERE thread_id=${input.threadId}`;
+            const at = DateTime.formatIso(yield* DateTime.now);
+            // Work without its own record yet (the Assistant's delegations) gains one to hold the name.
+            yield* sql`INSERT INTO workspace_thread_metadata(thread_id,kind,title,objective,updated_at,scope_project_id) VALUES(${input.threadId},'focus',${input.title},'',${at},${thread?.project_id ?? null}) ON CONFLICT(thread_id) DO NOTHING`;
+            const renamed =
+              yield* sql`UPDATE workspace_thread_metadata SET title=${input.title},updated_at=${at} WHERE thread_id=${input.threadId} AND kind='focus' RETURNING thread_id`;
+            if (!renamed.length) return yield* new WorkspaceReviewError({ reason: "unavailable" });
+          } else {
             const [current] = yield* decodeItems(
               yield* sql`SELECT key, version, kind, threadId, runId, botId, title, summary, completedAt, status, state FROM workspace_review_items WHERE key = ${input.key}`,
             );

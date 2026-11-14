@@ -1715,7 +1715,7 @@ export function AboutSettingsPanel() {
         />
         <SettingsRow
           {...searchableSetting("open-source-licenses")}
-          description="Bara includes T3 Code and other open-source components."
+          description="Bara includes Bara and other open-source components."
           control={
             <Button
               render={<Link to="/settings/open-source-licenses" />}
