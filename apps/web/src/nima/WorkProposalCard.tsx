@@ -10,7 +10,7 @@ import { newThreadId } from "../lib/utils";
 import { usePrimaryEnvironmentId } from "../state/environments";
 import { serverEnvironment } from "../state/server";
 import { useAtomCommand } from "../state/use-atom-command";
-import { parseWorkProposal } from "./assistantBrief";
+import { parseWorkProposal } from "./workProposal";
 import { BotAvatar } from "./BotAvatar";
 import { useBots } from "./useBots";
 import styles from "./WorkProposalCard.module.css";

@@ -1,5 +1,5 @@
 import { expect, it } from "vite-plus/test";
-import { parseWorkProposal } from "./assistantBrief";
+import { parseWorkProposal } from "./workProposal";
 
 it("reads a complete proposal and refuses partial or foreign blocks", () => {
   expect(

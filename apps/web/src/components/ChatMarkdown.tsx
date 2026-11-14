@@ -1,5 +1,5 @@
 import { buildFileLinkParentSuffixByPath, fileLinkLabel } from "@t3tools/shared/fileLinks";
-import { PROPOSAL_FENCE } from "../nima/assistantBrief";
+import { PROPOSAL_FENCE } from "../nima/workProposal";
 import { WorkProposalCard } from "../nima/WorkProposalCard";
 import {
   isWindowsDrivePathHref,

@@ -12,7 +12,7 @@ import { useEnvironment } from "../state/environments";
 import { useEnvironmentQuery } from "../state/query";
 import { EMPTY_SERVER_PROVIDERS, serverEnvironment } from "../state/server";
 import { useAtomCommand } from "../state/use-atom-command";
-import { DAILY_BRIEF_PROMPT, DAILY_BRIEF_TASK_ID, DAILY_BRIEF_TITLE } from "./assistantBrief";
+import { DAILY_BRIEF_PROMPT, DAILY_BRIEF_TASK_ID, DAILY_BRIEF_TITLE } from "./workProposal";
 import { usePersonalAssistant } from "./usePersonalAssistant";
 
 const DEFAULT_TIME = "08:30";
