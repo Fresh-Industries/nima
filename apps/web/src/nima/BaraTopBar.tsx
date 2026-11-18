@@ -221,7 +221,7 @@ function ProfileMenu() {
         }
       />
       <MenuPopup side="bottom" align="end">
-        {item("/pucko", <Bot size={15} />, "Pucko")}
+        {item("/pucko", <Bot size={15} />, "Voice")}
         {item("/inbox", <Inbox size={15} />, "Inbox")}
         {item("/goals", <Target size={15} />, "Goals")}
         {item("/spaces", <BookOpen size={15} />, "Library")}

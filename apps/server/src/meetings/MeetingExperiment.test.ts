@@ -39,7 +39,10 @@ it.effect(
     const runtime = Layer.mock(ThreadManagement.ThreadManagementService)({
       getThreadRecords: () => Effect.succeed(projection),
       // Pucko's lasting conversation exists once Work has created it.
-      getThreadShell: () => Effect.succeed(creates > 0 ? (projection.thread as never) : null),
+      getThreadShell: (id) =>
+        Effect.succeed(
+          creates > 0 || id === "assistant-home" ? (projection.thread as never) : null,
+        ),
       dispatch: (command) =>
         Effect.gen(function* () {
           if (rejectDispatch)
@@ -222,6 +225,19 @@ it.effect(
       yield* sql`INSERT INTO orchestration_v2_projection_runs(run_id,thread_id,ordinal,provider,status,requested_at,completed_at,payload_json) VALUES(${runId},${threadId},1,'devReplay','completed',${at},${at},'{}')`;
       const payload = yield* encodeMessage({ text: markdown });
       yield* sql`INSERT INTO orchestration_v2_projection_messages(message_id,thread_id,run_id,role,streaming,created_at,updated_at,payload_json) VALUES('reply',${threadId},${runId},'assistant',0,${at},${at},${payload})`;
+      // Once the Assistant has its conversation, voice speaks as the Assistant and lands there.
+      yield* sql`INSERT INTO workspace_bots(bot_id,description,config_json,thread_id) VALUES('primary','Assistant','{"name":"Citrus"}','assistant-home') ON CONFLICT(bot_id) DO UPDATE SET thread_id='assistant-home',config_json='{"name":"Citrus"}'`;
+      yield* meetings.command("owner", { ...start, id: "voice" });
+      const spoken = yield* meetings.command("owner", {
+        action: "invite",
+        id: "voice",
+        requestId: "spoken",
+        request: "What did we decide?",
+        context: "",
+      });
+      assert.equal(spoken.threadId, "assistant-home");
+      const last = commands.at(-1);
+      assert.include(last?.type === "message.dispatch" ? last.text : "", "You are Citrus");
       const ended = yield* meetings.command("owner", { action: "inspect", id: "meeting" });
       assert.equal(ended.summary, markdown);
       assert.equal(ended.summaryPageId, "pucko-meeting");

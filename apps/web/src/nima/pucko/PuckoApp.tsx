@@ -48,6 +48,7 @@ import { useBots } from "../useBots";
 import ChatView from "../../components/ChatView";
 import { BackgroundThreadContext } from "../../components/chat/backgroundThread";
 import { ComposerHandleContext } from "../../composerHandleContext";
+import { usePersonalAssistant } from "../usePersonalAssistant";
 import { usePucko } from "./PuckoProvider";
 import { PuckoFace } from "./PuckoFace";
 
@@ -81,6 +82,7 @@ function readSolo() {
 
 export function PuckoApp() {
   const { host, start } = usePucko();
+  const assistant = usePersonalAssistant();
   const navigate = useNavigate();
   const [chat, setChatPreference] = useState(readChat);
   const setChat = (next: boolean) => {
@@ -193,12 +195,14 @@ export function PuckoApp() {
   return (
     <main
       className="scrollbar-gutter-both relative flex min-h-0 flex-1 flex-col overflow-auto bg-background"
-      aria-label="Pucko"
+      aria-label={`Talk to ${assistant.config.name}`}
     >
       <header className="flex items-center justify-between gap-4 px-6 py-5 sm:px-10">
         <div>
-          <h1 className="text-lg font-medium tracking-tight">Pucko</h1>
-          <p className="mt-1 text-xs text-muted-foreground">Your meeting companion</p>
+          <h1 className="text-lg font-medium tracking-tight">{assistant.config.name}</h1>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Talk out loud, or bring me into a meeting
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -749,7 +753,7 @@ function PuckoWorkApprovals({
       {requests?.approvals.map((approval) => (
         <ThreadApproval
           key={approval.requestId}
-          entry={{ thread: threadRef, title: "Pucko", approval }}
+          entry={{ thread: threadRef, title: "Voice", approval }}
         />
       ))}
       {requests?.userInputs.length ? (

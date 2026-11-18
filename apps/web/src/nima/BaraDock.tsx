@@ -85,7 +85,7 @@ const TOOLS: readonly {
 }[] = [
   {
     id: "pucko",
-    label: "Pucko",
+    label: "Voice",
     icon: PuckoIcon,
     link: (props) => <Link to="/pucko" {...props} />,
     matches: (path) => path === "/pucko",

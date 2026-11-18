@@ -57,7 +57,7 @@ const APPS: Record<string, AppTab> = {
     link: (props) => <Link to="/bots" {...props} />,
   },
   pucko: {
-    label: "Pucko",
+    label: "Voice",
     icon: Smile,
     matches: (path) => path === "/pucko",
     link: (props) => <Link to="/pucko" {...props} />,
@@ -91,7 +91,7 @@ export function BaraTabs() {
         : bot
           ? bot.config.name
           : threadId === PUCKO_HOME_THREAD_ID
-            ? "Pucko"
+            ? assistant.config.name
             : meta?.title || thread?.title,
       face: isAssistant
         ? { avatar: assistant.config.avatar, name: assistant.config.name, seed: undefined }

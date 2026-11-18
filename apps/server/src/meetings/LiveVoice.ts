@@ -26,6 +26,7 @@ export class LiveVoice extends Context.Service<
     readonly connect: (
       sdp: string,
       activationName?: string,
+      name?: string,
     ) => Effect.Effect<{ sessionId: string; sdp: string }, MeetingExperimentError>;
   }
 >()("t3/meetings/LiveVoice") {}
@@ -69,7 +70,7 @@ export const layer = Layer.effect(
         );
       }),
       connect: Effect.fn("LiveVoice.connect")(
-        function* (sdp, activationName = "Citrus") {
+        function* (sdp, activationName = "Citrus", name = "Pucko") {
           const saved = yield* stored;
           const key = Option.isSome(saved)
             ? new TextDecoder().decode(saved.value)
@@ -89,7 +90,7 @@ export const layer = Layer.effect(
                   model: "gpt-live-1",
                   store: false,
                   delegation: { type: "client", acknowledgement_delay_ms: 800 },
-                  instructions: puckoInstructions(activationName),
+                  instructions: puckoInstructions(activationName, name),
                 },
                 transport: { type: "webrtc", sdp },
               }),
