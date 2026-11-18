@@ -6,7 +6,6 @@ import {
   Bot,
   Check,
   Folder,
-  GripHorizontal,
   Layers,
   Plus,
   Radio,
@@ -431,9 +430,6 @@ export function BaraDock() {
           if (!pickerOpen) conceal();
         }}
       >
-        <span className={styles.grip} aria-hidden>
-          <GripHorizontal size={14} />
-        </span>
         {tools.map(({ id, label, icon: Icon, link, matches, actions }) => {
           const current = matches(pathname, area);
           const status = id === "desk" ? workState : id === "live" && onAir ? "on-air" : null;

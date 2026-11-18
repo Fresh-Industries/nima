@@ -45,7 +45,8 @@ export function WorkSessionHeader({ threadRef }: { threadRef: ScopedThreadRef })
   if (
     !thread ||
     !metadata ||
-    metadata.kind === "assistant" ||
+    // Other conversations show their name and rename in their own header.
+    metadata.kind !== "focus" ||
     (thread.lineage.relationshipToParent === "subagent" && metadata.kind !== "focus")
   )
     return null;

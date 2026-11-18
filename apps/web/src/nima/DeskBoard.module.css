@@ -34,6 +34,7 @@
   color: var(--nima-ink);
 }
 .composer {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -60,7 +61,7 @@
 .composer input::placeholder {
   color: var(--nima-muted);
 }
-.composer button {
+.composer .send {
   display: grid;
   place-items: center;
   flex: none;
@@ -69,6 +70,9 @@
   border-radius: 50%;
   color: var(--background);
   background: var(--nima-ink);
+}
+.composer .send:disabled {
+  opacity: 0.35;
 }
 .composer button:focus-visible {
   outline: 2px solid var(--ring);
@@ -297,5 +301,63 @@
 @keyframes bara-tile-out {
   to {
     opacity: 0;
+  }
+}
+
+/* Where the work happens, chosen right in the box. A native select keeps it keyboard-ready. */
+.project {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  max-width: 200px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--nima-sub);
+  background: var(--nima-side);
+}
+.project:hover,
+.project:focus-within {
+  color: var(--nima-ink);
+}
+.project:focus-within {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+.project > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project select {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.more {
+  flex: none;
+  padding: 0 6px;
+  font-size: 12px;
+  color: var(--nima-muted);
+}
+.more:hover {
+  color: var(--nima-ink);
+}
+.composerError {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 20px;
+  font-size: 12px;
+  color: var(--destructive);
+}
+@media (max-width: 640px) {
+  .more {
+    display: none;
+  }
+  .project > span {
+    max-width: 80px;
   }
 }

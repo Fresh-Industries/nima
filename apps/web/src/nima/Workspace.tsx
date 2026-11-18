@@ -25,6 +25,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { SaveResultButton } from "./SaveResultButton";
 import { inboxSummary } from "./inboxSummary";
+import { DeskQuickStart } from "./DeskQuickStart";
 import { NimaDialog } from "./NimaDialog";
 import styles from "./nima.module.css";
 import desk from "./DeskBoard.module.css";
@@ -180,6 +181,7 @@ export function ConversationList({
   const { active, review } = useWorkspaceThreads();
   const navigate = useNavigate();
   const team = useBots();
+  const primary = usePrimaryEnvironmentId();
   const { environments } = useEnvironments();
   const projects = useProjects();
   const project = projects.find(
@@ -289,25 +291,16 @@ export function ConversationList({
         <WorkProjects query={query} onQuery={setQuery} />
       ) : (
         <>
-          <form
-            className={desk.composer}
-            onSubmit={(event) => {
-              event.preventDefault();
-              setCreating(true);
-            }}
-          >
-            <input
-              aria-label="Start new work"
-              placeholder={
-                project ? `What should we work on in ${project.title}?` : "What should we work on?"
-              }
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
+          {(environmentId ?? primary) && (
+            <DeskQuickStart
+              environmentId={(environmentId ?? primary)!}
+              projectId={projectId}
+              onMoreOptions={(text) => {
+                setDraft(text);
+                setCreating(true);
+              }}
             />
-            <button type="submit" aria-label="New session">
-              <ArrowUpRight size={16} />
-            </button>
-          </form>
+          )}
           {botId && <p className="text-sm text-muted-foreground">Work coordinated by this Bot.</p>}
           {rows.length + toReview.length > 6 && (
             <label className={desk.filter}>
